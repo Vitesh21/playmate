@@ -1,68 +1,136 @@
+/* Tailwind CSS core directives — injects base styles, component classes, and utility classes */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Base theme layer — defines all CSS custom properties (design tokens)
+ * Colors use HSL format: "hue saturation% lightness%" for easy opacity compositing via `with-bg-opacity`
+ * Two themes are provided:
+ *   :root — Light theme (default, no class required)
+ *   .dark — Dark theme (activated by applying the `dark` class to <html> or <body>)
+ */
 @layer base {
+  /*
+   * LIGHT THEME tokens (default). Activated by default when no .dark class is present.
+   * Backgrounds are white/light, text is near-black, surfaces are elevated with subtle gray borders.
+   */
   :root {
+    /* Page background color — pure white */
     --background: 0 0% 100%;
+    /* Default body text color — near-black dark slate */
     --foreground: 240 10% 3.9%;
+    /* Card/surface background — white (matches page bg in light mode) */
     --card: 0 0% 100%;
+    /* Text color for content inside cards */
     --card-foreground: 240 10% 3.9%;
+    /* Popover/tooltip/dropdown menu background */
     --popover: 0 0% 100%;
+    /* Text color for popover content */
     --popover-foreground: 240 10% 3.9%;
+    /* PRIMARY brand accent — rose/red (used for logo, primary buttons, active states) */
     --primary: 346.8 77.2% 49.8%;
+    /* Text color to place on top of primary backgrounds */
     --primary-foreground: 355.7 100% 97.3%;
+    /* Secondary surface background — light gray for tabs, secondary buttons */
     --secondary: 240 4.8% 95.9%;
+    /* Text color on secondary surfaces */
     --secondary-foreground: 240 5.9% 10%;
+    /* Muted/disabled surface background — same as secondary in light mode */
     --muted: 240 4.8% 95.9%;
+    /* Muted body text — softer gray for captions, helper text, placeholders */
     --muted-foreground: 240 3.8% 46.1%;
+    /* Accent surface background — used for hover highlights, same as secondary in light */
     --accent: 240 4.8% 95.9%;
+    /* Text color on accent surfaces */
     --accent-foreground: 240 5.9% 10%;
+    /* Destructive/error color — red, for delete buttons, error states */
     --destructive: 0 84.2% 60.2%;
+    /* Text color on destructive backgrounds */
     --destructive-foreground: 0 0% 98%;
+    /* Default border color for dividers, card borders, input outlines */
     --border: 240 5.9% 90%;
+    /* Input/form field border background color */
     --input: 240 5.9% 90%;
+    /* Focus ring color — matches primary for accessible keyboard navigation outlines */
     --ring: 346.8 77.2% 49.8%;
+    /* Global default border-radius for buttons, cards, inputs */
     --radius: 0.75rem;
+    /* PLAY theme accent — emerald green (venue booking, courts, "Play" buttons) */
     --play: 155 70% 45%;
+    /* Text color to place on top of play-colored backgrounds */
     --play-foreground: 0 0% 100%;
+    /* SHOP theme accent — bright blue (e-commerce, products, "Shop" buttons) */
     --shop: 217 91% 60%;
+    /* Text color to place on top of shop-colored backgrounds */
     --shop-foreground: 0 0% 100%;
   }
 
+  /*
+   * DARK THEME tokens. Activated by adding the `dark` class to a parent element (typically <html>).
+   * Backgrounds are near-black, text is white, surfaces are dark slate grays.
+   * Brand colors (primary, play, shop) are slightly darkened to maintain contrast on dark bg.
+   */
   .dark {
+    /* Deep near-black page background with warm undertone */
     --background: 20 14.3% 4.1%;
+    /* Near-white default text for dark mode readability */
     --foreground: 0 0% 95%;
+    /* Elevated card surface — slightly lighter than page bg for depth */
     --card: 24 9.8% 10%;
+    /* Card text — same as foreground in dark mode */
     --card-foreground: 0 0% 95%;
+    /* Popover/dropdown background — deep near-black */
     --popover: 0 0% 9%;
+    /* Popover text color */
     --popover-foreground: 0 0% 95%;
+    /* Primary brand accent — SAME hue as light mode for brand consistency */
     --primary: 346.8 77.2% 49.8%;
+    /* Primary foreground text */
     --primary-foreground: 355.7 100% 97.3%;
+    /* Secondary surface — dark slate gray */
     --secondary: 240 3.7% 15.9%;
+    /* Text color on secondary surfaces */
     --secondary-foreground: 0 0% 98%;
+    /* Muted surface background — dark charcoal */
     --muted: 0 0% 15%;
+    /* Muted text — medium gray for helper/caption text in dark mode */
     --muted-foreground: 240 5% 64.9%;
+    /* Accent surface — slightly warmer dark gray for hover states */
     --accent: 12 6.5% 15.1%;
+    /* Accent foreground text */
     --accent-foreground: 0 0% 98%;
+    /* Destructive/error — darker red so it doesn't glare on dark bg */
     --destructive: 0 62.8% 30.6%;
+    /* Destructive foreground text */
     --destructive-foreground: 0 85.7% 97.3%;
+    /* Divider/border color — dark slate for subtle separation without noise */
     --border: 240 3.7% 15.9%;
+    /* Input border/background in dark mode */
     --input: 240 3.7% 15.9%;
+    /* Focus ring — same primary hue for consistency */
     --ring: 346.8 77.2% 49.8%;
+    /* PLAY accent in dark — slightly darker green (40% lightness vs 45% light) to preserve contrast */
     --play: 155 70% 40%;
+    /* Play foreground text */
     --play-foreground: 0 0% 100%;
+    /* SHOP accent in dark — slightly darker blue (55% lightness vs 60% light) */
     --shop: 217 91% 55%;
+    /* Shop foreground text */
     --shop-foreground: 0 0% 100%;
   }
 }
 
+/* Additional base styles applied to every page — universal resets and body defaults */
 @layer base {
+  /* Universal selector: apply the themed border color to all elements by default */
   * {
     @apply border-border;
   }
+  /* Body defaults: apply background + text tokens from current theme, enable OpenType ligatures */
   body {
     @apply bg-background text-foreground;
+    /* Enable discretionary ligatures (rlig) and contextual alternates (calt) for better typography */
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
