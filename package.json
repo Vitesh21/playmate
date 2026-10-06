@@ -1,0 +1,29 @@
+{
+  "name": "playmate",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Sports Platform - Play & Shop",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "db:generate": "turbo db:generate",
+    "db:push": "turbo db:push",
+    "db:migrate": "turbo db:migrate",
+    "db:studio": "turbo db:studio"
+  },
+  "devDependencies": {
+    "@playmate/types": "workspace:*",
+    "@playmate/validation": "workspace:*",
+    "@playmate/config": "workspace:*",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "prettier": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}
