@@ -6,7 +6,7 @@
  * are acceptable in a types package).
  *
  * Consumed by:
- *   - apps/web    (Next.js frontend)
+ *   - apps/mobile (React Native / Expo Android + iOS frontend)
  *   - apps/api    (NestJS backend)
  *   - packages/validation (zod schema type inference)
  *   - packages/config     (env + app constants)

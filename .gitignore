@@ -19,3 +19,20 @@ coverage
 .turbo
 .drizzle
 supabase/.temp
+
+# TypeScript build artifacts
+*.tsbuildinfo
+
+# Expo / React Native
+.expo/
+.expo-shared/
+dist-web/
+web-build/
+android/
+ios/
+*.jks
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
