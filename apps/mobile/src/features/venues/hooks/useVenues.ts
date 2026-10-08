@@ -7,8 +7,8 @@ import type {
   CourtSlot,
   ApiResponse,
   PaginatedResponse,
-  VenueSearchInput,
 } from '@playmate/types';
+import type { VenueSearchInput } from '@playmate/validation';
 
 const VENUE_KEYS = {
   all: ['venues'] as const,
@@ -116,8 +116,8 @@ export function useCreateBooking() {
       >('/bookings', data);
       return res.data;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: [...VENUE_KEYS.slots(variables.courtSlotId)] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...VENUE_KEYS.all, 'slots'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
     },
   });

@@ -5,8 +5,8 @@ import type {
   ApiResponse,
   PaginatedResponse,
   PaginationParams,
-  CheckoutInput,
 } from '@playmate/types';
+import type { CheckoutInput } from '@playmate/validation';
 
 const ORDER_KEYS = {
   all: ['orders'] as const,

@@ -1,8 +1,43 @@
+import * as fs from "fs";
+import * as path from "path";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { getConfig } from "@playmate/config";
+
+function loadEnv() {
+  const candidates = [
+    path.resolve(process.cwd(), ".env"),
+    path.resolve(process.cwd(), "../../.env"),
+    path.resolve(__dirname, "../.env"),
+    path.resolve(__dirname, "../../.env"),
+    path.resolve(__dirname, "../../../.env"),
+  ];
+  for (const envPath of candidates) {
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, "utf-8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx !== -1) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          let val = trimmed.slice(eqIdx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          if (process.env[key] === undefined) {
+            process.env[key] = val;
+          }
+        }
+      }
+      break;
+    }
+  }
+}
+
+loadEnv();
 
 async function bootstrap() {
   const config = getConfig();
@@ -30,7 +65,12 @@ async function bootstrap() {
     SwaggerModule.setup("docs", app, document);
   }
 
-  await app.listen(config.API_PORT);
+  // Redirect root GET / to /docs
+  app.getHttpAdapter().get("/", (_req: any, res: any) => {
+    res.redirect("/docs");
+  });
+
+  await app.listen(config.API_PORT, "0.0.0.0");
   console.log(`[API] Running on http://localhost:${config.API_PORT}`);
   console.log(`[API] Docs available at http://localhost:${config.API_PORT}/docs`);
 }

@@ -105,11 +105,7 @@ const CardBase: React.FC<CardProps> = ({
   );
 };
 
-interface CardHeaderProps {
-  title: string;
-  subtitle?: string;
-  rightAction?: React.ReactNode;
-}
+export const Card = CardBase as CardComponent;
 
 Card.Header = function CardHeader({ title, subtitle, rightAction }: CardHeaderProps) {
   const { spacing, typography, colors } = useTheme();

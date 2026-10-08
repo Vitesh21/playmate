@@ -78,7 +78,6 @@ export class AuthGuard implements CanActivate {
  * the shared @playmate/types package). If it is missing or not in the
  * allowed set → 401 Unauthorized (not 403, to avoid leaking role info).
  */
-@Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly requiredRoles: UserRole[]) {}
 

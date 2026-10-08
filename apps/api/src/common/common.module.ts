@@ -6,7 +6,7 @@ import { AuthGuard, RolesGuard } from "./auth.guard";
 
 @Global()
 @Module({
-  providers: [SupabaseService, RazorpayService, EmailService, AuthGuard, RolesGuard],
-  exports: [SupabaseService, RazorpayService, EmailService, AuthGuard, RolesGuard],
+  providers: [SupabaseService, RazorpayService, EmailService, AuthGuard],
+  exports: [SupabaseService, RazorpayService, EmailService, AuthGuard],
 })
 export class CommonModule {}

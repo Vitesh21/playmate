@@ -6,13 +6,13 @@ import type {
   ProductVariant,
   ApiResponse,
   PaginatedResponse,
-  ProductSearchInput,
 } from '@playmate/types';
+import type { ProductSearchInput } from '@playmate/validation';
 
 const PRODUCT_KEYS = {
   all: ['products'] as const,
   lists: () => [...PRODUCT_KEYS.all, 'list'] as const,
-  list: (filters: ProductSearchInput) => [...PRODUCT_KEYS.lists(), filters] as const,
+  list: (filters: Partial<ProductSearchInput>) => [...PRODUCT_KEYS.lists(), filters] as const,
   details: () => [...PRODUCT_KEYS.all, 'detail'] as const,
   detail: (id: string) => [...PRODUCT_KEYS.details(), id] as const,
   variants: (productId: string) => [...PRODUCT_KEYS.detail(productId), 'variants'] as const,
@@ -35,7 +35,7 @@ export function useCategories(options?: Omit<UseQueryOptions<Category[]>, 'query
 }
 
 export function useProducts(
-  filters: ProductSearchInput = {},
+  filters: Partial<ProductSearchInput> = {},
   options?: Omit<UseQueryOptions<PaginatedResponse<Product>>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery<PaginatedResponse<Product>>({
