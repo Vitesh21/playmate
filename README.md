@@ -1,442 +1,240 @@
-# Playmate — Sports Platform
+# Playmate
 
-> **Playo + Amazon, but completely focused on sports.**
-> Book sports venues, join games, and buy quality equipment — all in one place.
+> **"Your court, your kit, one tap."** — Playmate combines **Playo-style court booking** with **District-style on-demand venue essentials**
+> (rackets, shuttles, grips) delivered to the court on arrival *or* mid-game via QR scan.
+> Monorepo · React Native (Android + future iOS) + NestJS + Supabase PostgreSQL + Razorpay.
 
 ---
 
-## 📦 Tech Stack
+## 🛠 Tech Stack Summary
 
 | Layer | Technology | Why |
 |---|---|---|
-| **Frontend** | Next.js 14 (App Router) + TypeScript | SSR/SSG, RSC, React familiarity |
-| **UI** | Tailwind CSS + shadcn/ui-style components | Design tokens, zero-runtime, copy-paste friendly |
-| **Backend** | NestJS 10 + TypeScript + REST | Modular, opinionated, typed DI |
-| **Database** | PostgreSQL on Supabase | Free tier, extensions, managed |
-| **ORM** | Drizzle ORM | SQL-first, type-safe, edge-ready |
-| **Authentication** | Supabase Auth | Email + OTP + social, managed JWT |
-| **Storage** | Supabase Storage | Public / signed URLs for images |
-| **Payments** | Razorpay | INR native, UPI + cards, webhooks |
-| **Email** | Resend | Transactional, React email templates |
-| **Search** | PostgreSQL FTS + pg_trgm → Meilisearch later | Zero extra infra on day 1 |
-| **Cache** | None (MVP) → Upstash Redis later | Pay only what you need |
-| **Deployment** | Next.js → Vercel · NestJS → Render · DB → Supabase | Near-zero cost for MVP |
-| **Repository** | GitHub | — |
-| **Monorepo** | pnpm 9 + Turborepo | Fast installs, caching, shared types |
+| **Database** | **PostgreSQL 15+** on **Supabase** (Managed, with PostGIS later for "near me") | ACID compliance, PostGIS for GIS search, Supabase Storage for images, Pooler for Serverless cold-starts |
+| **ORM + SQL migrations** | **Drizzle ORM** (TypeScript SQL builder) with `drizzle-kit generate:pg` | Zero magic, colocated TypeScript types, fastest Node.js ORM — see [apps/api/src/db/schema](apps/api/src/db/schema) |
+| **Auth — Authentication** | **Supabase Auth** (JWT + RLS) | Email/password, Magic-link OTP, Phone OTP, Google OAuth, Apple OAuth — same JWT consumed by both API and Mobile |
+| **Auth — Authorization** | RBAC via `user_role` enum on `users` table: `USER` · `VENUE_OWNER` · `SELLER` · `ADMIN` + route-level `AuthGuard` (NestJS) + **Postgres RLS policies** per row | Single source of truth at DB layer, service-role key only inside NestJS trusted backend |
+| **API Backend** | **NestJS 10 + Express** · DTO validation via `nestjs-zod` + `@playmate/validation` shared schemas | Modular services (bookings, venues, payments, venue-essentials, on-demand-orders, carts, products) |
+| **Mobile App (Android)** | **Expo SDK 51 · React Native 0.74 · TypeScript** | One codebase for Android (today) + iOS (later) with Expo OTA updates, SecureStore for JWTs, Metro monorepo config |
+| **Navigation** | React Navigation — bottom tabs × 4 native stacks (Play · Shop · Bookings · Profile) · typed params | Native-feeling back-stack, deep-linkable routes |
+| **State (client)** | **Zustand** for UI stores (auth/cart/app/theme) + **TanStack Query v5** for all server/cached state | Colocation, query invalidation, optimistic updates, stale-while-revalidate |
+| **Payments** | **Razorpay Standard Checkout** · Orders API · Webhook `payment.captured` → booking confirmation | India UPI, cards, wallets, net-banking. Payment records linked to EITHER `orderId` OR `bookingId` (single generic payments table) |
+| **Email** | **Resend** · transactional (booking confirm, password reset, receipt) | 100/day free tier, good deliverability |
+| **Forms (mobile)** | **react-hook-form** + zod resolver via `@playmate/validation` shared zod DTOs | Validation runs on client AND server with the SAME schema file |
+| **Build & Run** | **Turborepo** (task runner) + **pnpm** workspaces | Cache-aware build graph, hoisted `node_modules`, single `pnpm install` for monorepo |
 
 ---
 
-## 🏗️ Architecture — Modular Monolith
-
-```
-                  ┌──────────────────────┐
-                  │      Next.js 14      │
-                  │   apps/web (:3000)   │
-                  │  Tailwind + shadcn   │
-                  └──────────┬───────────┘
-                             │
-                         REST /api
-                             │
-                  ┌──────────▼───────────┐
-                  │      NestJS 10       │
-                  │   apps/api (:3001)   │
-                  │   15 Module domains  │  ←─ Play & Shop share one binary
-                  └──────────┬───────────┘
-                             │
-        ┌────────────────────┼────────────────────┐
-        │                    │                    │
-        ▼                    ▼                    ▼
-   PostgreSQL            Storage              Razorpay
-   (Supabase)            (Supabase)            Payments
-   Drizzle schema         3 Buckets            Webhooks
-```
-
-**Keep these two domains separate even inside one binary.**
-
-### 🏟️ PLAY Engine
-```
-Sports → Venues → Courts → CourtSlots → Bookings → Payment → Email
-Example: Badminton → Smash Arena → Court 3 → 6 PM → ₹500 → CONFIRMED
-```
-
-### 🛒 SHOP Engine
-```
-Categories → Products → ProductVariants → Inventory → Cart → Orders → Payment → Delivery
-Example: Badminton → Rackets → Yonex Astrox 4U/G5 → Stock → Cart → Order
-```
-
----
-
-## 📁 Project Structure
+## 🗂 Monorepo Structure
 
 ```
 playmate/
 ├── apps/
-│   ├── web/                 # Next.js 14 frontend (App Router)
+│   ├── api/                NestJS + Drizzle + Razorpay backend
 │   │   ├── src/
-│   │   │   ├── app/         # Pages + layouts + globals.css
-│   │   │   ├── components/  # ui/* + layout/* (Navbar, Footer)
-│   │   │   └── lib/         # supabase client/server, api, utils, db.types
-│   │   ├── tailwind.config.js
-│   │   ├── next.config.js
-│   │   └── tsconfig.json
-│   │
-│   └── api/                 # NestJS backend
-│       ├── src/
-│       │   ├── main.ts              # Entry → :3001, /api prefix, Swagger /docs
-│       │   ├── app.module.ts        # Imports all 17 modules
-│       │   ├── common/              # Supabase, Razorpay, Resend, Guards, BaseService
-│       │   ├── db/                  # Drizzle module + migration runner
-│       │   │   └── schema/          # 15 tables + 6 enums (see Database section)
-│       │   ├── health/              # GET /api/health
-│       │   ├── auth/                # Supabase signup/login/logout/me/reset
-│       │   ├── users/               # CRUD + upsert from auth
-│       │   ├── sports/              # CRUD + slug + search
-│       │   ├── venues/              # Search (sport/city/price/slot) + courts
-│       │   ├── courts/              # CRUD + slots (single + bulk create)
-│       │   ├── bookings/            # ⚠️ Transactional: PENDING → CONFIRMED/EXPIRED
-│       │   ├── categories/          # Hierarchical parentId + tree view
-│       │   ├── products/            # Search + variants + sort + filter
-│       │   ├── inventory/           # Upsert + reserve/release per variant+warehouse
-│       │   ├── cart/                # Auto-create cart + add/update/remove
-│       │   ├── orders/              # ⚠️ Transactional checkout + status lifecycle
-│       │   ├── payments/            # Razorpay webhook HMAC → auto-confirm
-│       │   ├── reviews/             # Products & venues, updates avg rating
-│       │   ├── notifications/       # Per user, mark read + unread count
-│       │   └── admin/               # Dashboard stats
-│       ├── drizzle.config.ts
-│       └── tsconfig.json
-│
-├── packages/                 # Internal packages, published via pnpm workspaces
-│   ├── types/                # Core domain types + enums
-│   ├── validation/           # Zod schemas for every request
-│   └── config/               # Zod env schema + app constants
-│
-├── package.json              # Workspace root
-├── pnpm-workspace.yaml       # apps/* + packages/*
-├── turbo.json                # Build pipelines
-├── tsconfig.json             # Shared TS + path aliases
-├── .prettierrc
-├── .env.example
-├── pnpm-lock.yaml
-└── README.md
+│   │   │   ├── auth/                JWT validation → Supabase Auth service, auth.controller
+│   │   │   ├── common/              AuthGuard, BaseService, Email, Razorpay, Supabase
+│   │   │   ├── bookings/            court booking + venue-essentials attachment
+│   │   │   ├── venues/              venues + courts + court-slots
+│   │   │   ├── venue-essentials/    pro-shop catalog per venue (NEW)
+│   │   │   ├── on-demand-orders/    mid-game court-QR essentials orders (NEW)
+│   │   │   ├── cart/ · orders/ · products/ · categories/
+│   │   │   ├── inventory/ · payments/ · reviews/ · notifications/ · users/
+│   │   │   ├── admin/               ADMIN + VENUE_OWNER scoped endpoints
+│   │   │   ├── health/              /health liveness/readiness probes
+│   │   │   └── db/schema/           18 Drizzle PostgreSQL tables + 2 NEW (venue-essentials, booking-essentials, on-demand-orders)
+│   │   └── test/             Jest route tests (NEW)
+│   └── mobile/             Expo · React Native Android app (iOS later)
+│       └── src/
+│           ├── features/           Feature-sliced: auth / venues / bookings / venue-essentials / products / cart / orders / profile
+│           │   └── venue-essentials/  EssentialCard + RecommendationRail + TanStack hooks
+│           └── shared/             Reusable, feature-agnostic layer
+│               ├── components/ui/  Design system (Button/Input/Card/Badge/States + FormInput)
+│               ├── theme/          Forest-teal LIGHT + DARK minimal themes · ThemeProvider
+│               ├── navigation/     4 tab stacks, 20+ typed routes
+│               ├── services/       axios (interceptor, toast), Supabase, SecureStore, payments
+│               ├── store/          zustand: auth, cart, app
+│               ├── hooks/          useAppState, useToggle, useDimensions
+│               └── utils/          formatCurrency (₹), formatDate, status→badge
+└── packages/
+    ├── types/            Shared domain types + BOOKING/ORDER/PAYMENT enums + NEW
+    │                     VenueEssential / BookingEssential / OnDemandOrder + full typed ROADMAP
+    ├── validation/       Zod DTOs shared by BOTH mobile AND NestJS API
+    │                     + NEW venueEssentialCreateSchema / attachEssentialsSchema / onDemandCreateSchema
+    └── config/           Zod-validated env vars + operational knobs (booking expiry, GST %)
 ```
 
 ---
 
-## 🗄️ Database — 15 Tables, 6 Enums
+## 🔐 Authentication & Authorization — Full Explanation
 
-All models live in `apps/api/src/db/schema/`.
+### A. AUTHENTICATION (Who are you?)
 
-### Enums
+We use **Supabase Auth** as the single Identity Provider. Every sign-in flow returns a JWT (`access_token`).
 
-| Enum | Values |
+| Flow | How it works |
 |---|---|
-| `user_role` | USER, ADMIN, VENUE_OWNER, SELLER |
-| `booking_status` | PENDING, CONFIRMED, EXPIRED, CANCELLED, REFUNDED |
-| `payment_status` | PENDING, PAID, FAILED, REFUNDED |
-| `payment_method` | RAZORPAY |
-| `order_status` | PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED, REFUNDED |
-| `notification_type` | BOOKING_CONFIRMED, BOOKING_REMINDER, ORDER_CONFIRMED, ORDER_SHIPPED, ORDER_DELIVERED, PAYMENT_SUCCESS, PAYMENT_FAILED, GENERAL |
+| **Email + password** | `supabase.auth.signInWithPassword()` → JWT → Expo SecureStore → sent as `Authorization: Bearer <token>` on every API call |
+| **Phone OTP** (India) | `signInWithOtp({ phone })` → 6-digit SMS via Supabase → verifyOtp → JWT |
+| **Google OAuth** | Expo `expo-auth-session` → Google redirect → Supabase exchange → JWT |
+| **Magic link** | Email "tap to login" link → no password needed |
 
-### Core Entity Graph
+**Token lifecycle**: JWT expires in 1h by default. Supabase SDK uses `refresh_token` (exchanged in background by `supabase.auth.onAuthStateChange`) to get a fresh access token. Mobile restores session from SecureStore on cold launch (`useAuthStore.restoreSession`).
 
-```
-User
- ├── Bookings ──── Court ──── Venue ──── Sport
- │                    └── CourtSlots (UNIQUE court+date+start+end)
- ├── Orders  ──── OrderItems ──── ProductVariant ──── Product ──── Category
- │      │                                               │
- │      └── Payment ───────────────────────────────────┘ (or from Booking)
- │
- ├── Reviews (venueId XOR productId)
- └── Notifications
-```
+### B. AUTHORIZATION (What can you do?) — **Two layers, always.**
 
-Key constraint design:
-- **court_slots** has `UNIQUE (court_id, date, start_time, end_time)` to prevent duplicate slots
-- **product_variants** has `UNIQUE sku`
-- **inventory** has `UNIQUE (variant_id, warehouse)` so you can track stock per WH
-- **JSONB** used for venue `operating_hours`, `amenities`, `images` and order `shipping_address` / `billing_address`
+1. **NestJS route guard** — [auth.guard.ts](apps/api/src/common/auth.guard.ts)
+   - Verifies JWT signature against Supabase `jwt_secret` → extracts `sub` (userId) and `user_role`
+   - Controller routes decorated with `@Roles(UserRole.ADMIN, UserRole.VENUE_OWNER)`
+   - Rejects 401 if missing/invalid token, 403 if role mismatch
 
----
+2. **Postgres Row-Level Security policies** (Supabase dashboard)
+   - `SELECT` on `users`: users can READ their own row
+   - `bookings`: users can only see rows where `user_id = auth.uid()`
+   - VENUE_OWNER can CRUD `venues` where `owner_id = auth.uid()`
+   - SELLER can CRUD `products` where `seller_id = auth.uid()`
+   - Even if NestJS has a bug, the DB will never leak another user's bookings.
 
-## 🔁 Booking Engine (Critical Path)
+### C. RBAC Roles — [packages/types/src/index.ts `UserRole`](packages/types/src/index.ts#L95-L100)
 
-Double-bookings are prevented with **PostgreSQL row-level locking + unique constraints**.
-
-```
-User selects slot
-       │
-       ▼
-BEGIN transaction
-  SELECT ... FROM court_slots
-    WHERE id = X AND is_available = true
-    FOR UPDATE SKIP LOCKED        ← 2nd user gets 0 rows, not a blocked wait
-  if (not found) → Conflict
-  INSERT bookings (PENDING, expiresAt = now + 15 min)
-  UPDATE court_slots SET is_available = false
-  INSERT payments (PENDING, transaction_id = rzp_order.id)
-  CALL razorpay.orders.create(amount * 100)
-COMMIT
-       │
-       ▼
-Razorpay checkout UI
-       │
-       ├─── payment.captured webhook ───► booking.CONFIRMED + payment.PAID
-       │                                      + Send booking confirmation email
-       │
-       └─── time passes (cron /api/bookings/expire-pending)
-             ▼
-          bookings.EXPIRED + court_slots.is_available = true
-```
-
-Cancel path → same row lock + flip slot back to available + booking.CANCELLED.
-
----
-
-## 🛒 Checkout Engine (Critical Path)
-
-```
-POST /api/orders/checkout (AuthGuard)
-       │
-       ▼
-BEGIN
-  SELECT cart FOR UPDATE
-  SELECT cart_items + product_variants JOIN
-  SELECT inventory FOR UPDATE where variant_id in (...)
-  foreach item:
-    if (quantity - reserved < requested) → 400
-    UPDATE inventory reserved += qty, quantity -= qty
-  subtotal = Σ(variant.price × qty)
-  tax = subtotal × 18%
-  shipping = (subtotal >= 999 ? 0 : 49)
-  total  = subtotal + tax + shipping - discount
-  INSERT orders (PENDING, addresses JSONB)
-  INSERT order_items (snapshot unit_price / total_price)
-  DELETE cart_items
-  CREATE razorpay order → INSERT payments (PENDING)
-COMMIT → return { order, payment, razorpayOrder }
-       │
-       ▼
-razorpay webhook payment.captured → orders.CONFIRMED + payments.PAID
-```
-
----
-
-## 🔌 Integrations
-
-### Supabase Auth
-- `POST /api/auth/signup` → creates Supabase user + auto-upserts `users` table row (id = auth uid)
-- `POST /api/auth/login` → returns `session.access_token`
-- Every subsequent call: `Authorization: Bearer <token>` → **AuthGuard** calls `supabase.auth.getUser(token)` → attaches `req.user`
-- **RolesGuard** (`@UseGuards(new RolesGuard(['ADMIN']))`) checks `req.user.role`
-
-### Supabase Storage (3 buckets)
-| Bucket | Purpose |
+| Role | Permissions |
 |---|---|
-| `venue-images` | Venue cover + gallery, court images |
-| `product-images` | Product gallery, variant option images |
-| `user-avatars` | User profile avatars |
+| `USER` | Default. Book courts, order essentials/products, manage own profile/orders |
+| `VENUE_OWNER` | Manage own venues · courts · slots · essentials pro-shop. View bookings of their venues. Mark essentials delivered/returned. |
+| `SELLER` | Manage own product catalog · variants · inventory. View own product orders/reviews. |
+| `ADMIN` | Superuser. All CRUD, impersonate users, financial reports, role promotion. |
 
-File upload endpoint pattern: `SupabaseService.uploadFile(bucket, path, buffer, contentType)` → returns `getPublicUrl()`.
-
-### Razorpay
-- Amount in **paise** (×100)
-- Receipt prefix `PMT_BKG_<id8>` / `PMT_ORD_<id8>` per config
-- **Webhook** at `POST /api/payments/razorpay/webhook`
-  - Computes HMAC-SHA256 over raw body using `RAZORPAY_KEY_SECRET` → matches `x-razorpay-signature`
-  - `payment.captured` / `order.paid` → flip booking/order to CONFIRMED + payment to PAID
-  - `payment.failed` → flip payment.FAILED (slot released later by expiry cron)
-
-### Resend
-- From: `Playmate <noreply@playmate.in>` (verify domain once in Resend dashboard)
-- `EmailService.sendBookingConfirmation` / `sendOrderConfirmation` wrappers + generic `send(to, subject, html)`
+**Never ship the `SUPABASE_SERVICE_ROLE_KEY` to the mobile app.** It only exists inside `apps/api` NestJS `.env`.
 
 ---
 
-## 🚀 Getting Started — Local Development
+## 💾 Database — Full Schema (18 + 3 NEW tables)
+
+PostgreSQL on Supabase. All tables use `UUID` primary keys + `created_at` / `updated_at`.
+
+### Core tables (already present)
+
+| Table | Purpose |
+|---|---|
+| `users` (synced 1:1 with `auth.users`) | profile + `user_role` enum |
+| `sports` | Sport taxonomy (Badminton, Football, Basketball, …) |
+| `venues` → FK sport_id, owner_id | Facility with address, lat/lng PostGIS later, operating_hours JSONB |
+| `courts` → FK venue_id | Bookable court inside venue (surface, hourly rate) |
+| `court_slots` → FK court_id · UNIQUE(court, date, start, end) | Actual bookable time slots. `is_available` flipped on booking creation |
+| `bookings` → FK user_id, court_slot_id, payment_id · status enum | PENDING → CONFIRMED / EXPIRED / CANCELLED / REFUNDED |
+| `categories` (products) · parent_id = self-referential tree |
+| `products` → FK category_id, seller_id | E-commerce listing |
+| `product_variants` → FK product_id · `sku` UNIQUE | Sellable SKU |
+| `inventory` → FK variant_id · (availableToSell = quantity - reserved) |
+| `cart` / `cart_items` | One cart per user |
+| `orders` / `order_items` | Shop checkout + address snapshot, tax/GST/shipping |
+| `payments` → generic FK (order_id OR booking_id) | Razorpay transaction_id + gateway_response JSONB |
+| `reviews` → XOR(venue_id, product_id) + isVerified flag |
+| `notifications` → user_id · push / email payload JSONB |
+
+### NEW Tables (Venue Essentials — your "forgot your racket" feature) — added in [apps/api/src/db/schema](apps/api/src/db/schema)
+
+| Table | Purpose |
+|---|---|
+| `venue_essentials` | Pro shop catalog per venue. Type: `RENT / SALE / ADDON`. Pricing model `PER_HOUR / PER_BOOKING / FIXED`. stock qty, max per booking, tags, categories. |
+| `booking_essentials` | Lines attached to a booking (price snapshot at checkout, qty, duration, line_total, fulfillment_status PENDING/DELIVERED/RETURNED/DAMAGED) — rolled into booking total, ONE combined Razorpay payment. |
+| `on_demand_orders` + `on_demand_order_items` | Mid-play QR scan → "Court 3 needs 2 shuttles + water". Status REQUESTED→PREPARING→DELIVERED. Staff tablet 1-tap fulfillment. |
+
+### Enums (Postgres native)
+
+`booking_status`, `payment_status`, `payment_method`, `order_status`, `user_role`, **NEW** `essential_type`(RENT/SALE/ADDON), `essential_pricing_model`(PER_HOUR/PER_BOOKING/FIXED).
+
+---
+
+## 🚀 Quickstart (Local Dev)
 
 ### Prerequisites
-- Node.js ≥ 18.17 (recommend 20.x LTS)
-- pnpm 9 (`corepack enable && corepack prepare pnpm@9.0.0 --activate`)
-- Docker (for Supabase local stack) OR a remote Supabase project
-- A Razorpay test-mode key pair (free from dashboard)
-- A Resend API key (free tier)
+- Node 18.17+, **pnpm 9**
+- Java 17 (for Android Emulator if running the app locally), or Expo Go app on your phone
+- Supabase local or cloud project
 
-### 1. Install Dependencies
 ```bash
+# 1. Install (hoisted)
 pnpm install
-```
 
-### 2. Configure Environment
-```bash
+# 2. Fill env vars
 cp .env.example .env
-# then edit .env:
-#   DATABASE_URL              → from Supabase settings → Database
-#   NEXT_PUBLIC_SUPABASE_URL  → Supabase Project URL
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY
-#   SUPABASE_SERVICE_ROLE_KEY
-#   RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET (test mode)
-#   RESEND_API_KEY
-```
+# — paste your Supabase project URL + anon/service-role keys
+# — paste Razorpay TEST-mode key_id + key_secret (NOT live)
+# — paste Resend API key (or any string for local; email send fails gracefully)
 
-### 3. Run Database Migrations
-```bash
+# 3. Setup DB — Drizzle migrations
 cd apps/api
-pnpm db:generate     # reads src/db/schema → writes SQL to ./drizzle/
-pnpm db:migrate      # runs migrations against DATABASE_URL
-# Alternative for quick prototype: pnpm db:push (no migration history)
-cd ../..
+pnpm db:generate       # generates SQL from schema TS under drizzle/
+pnpm db:migrate        # runs migrate.ts against DATABASE_URL
+
+# 4. Run the API
+pnpm --filter @playmate/api dev        # NestJS on http://localhost:3001
+# → /health should return { success:true }
+# → /api/docs for Swagger (nestjs/swagger) if enabled in main.ts bootstrap
+
+# 5. Run the Mobile app (Android)
+cd apps/mobile
+cp .env.example .env
+# → fill EXPO_PUBLIC_API_URL, EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY
+pnpm start             # then press 'a' → Android emulator; or scan QR in Expo Go on your device
 ```
 
-### 4. Start Dev Servers (parallel via Turborepo)
+### Scripts (from repo root)
 ```bash
-pnpm dev
-#  🚀 Frontend:  http://localhost:3000
-#  🚀 API:       http://localhost:3001
-#  📖 Swagger:   http://localhost:3001/docs
-```
-
-### 5. Individual Scripts
-```bash
-pnpm build            # build web + api (cached via turbo)
-pnpm typecheck        # run tsc --noEmit in all workspaces
-pnpm lint             # eslint
-pnpm format           # prettier write
-pnpm --filter api db:studio     # Drizzle Studio browser GUI
-pnpm --filter api db:migrate    # Run migrations from workspace root
+pnpm build                     # turbo build: packages/types → validation → config → api → mobile export
+pnpm typecheck                 # tsc --noEmit across whole workspace
+pnpm lint                      # eslint
+pnpm test                      # Jest API route tests (NEW)
+pnpm --filter @playmate/api dev
+pnpm --filter @playmate/mobile android
 ```
 
 ---
 
-## 🧭 Development Roadmap
+## 📋 Feature Roadmap (4 Phases · 25 features)
 
-### ✅ Phase 1 — Foundation (COMPLETE)
-- [x] Monorepo + pnpm/Turborepo + shared types/validation/config packages
-- [x] Next.js 14 App Router + Tailwind + homepage skeleton
-- [x] NestJS modular API (15 domains) + Swagger /docs
-- [x] Drizzle PostgreSQL schema (15 tables, 6 enums)
-- [x] Supabase Auth + Storage services wired
-- [x] Razorpay order + webhook verification + service
-- [x] Resend Email service wrappers
-- [x] Transactional Booking engine with row locks + expiry
-- [x] Transactional Orders / Checkout + inventory reservation
-- [x] Reviews, Notifications, Admin stats
+Typed directly in code: [packages/types/src/index.ts → `ROADMAP[]`](packages/types/src/index.ts#L573-L647). Summary:
 
-### 🎾 Phase 2 — Playo (NEXT)
-- [ ] Venue listing page with filters (sport, city, distance, amenities)
-- [ ] Venue detail: gallery, amenities, operating hours, price card
-- [ ] Interactive slot picker (calendar + hourly grid)
-- [ ] Booking summary → Razorpay checkout redirect
-- [ ] "My Bookings" page: Upcoming / Past / Cancelled tabs
-- [ ] Cron job (Vercel cron or bull) to call `/api/bookings/expire-pending`
-- [ ] Post-booking review flow with verified purchase badge
-- [ ] Admin: Create Venue → Add Courts → Bulk Generate Weekly Slots form
-
-### 🛍️ Phase 3 — Amazon (NEXT + 1)
-- [ ] Category nav → product listing with facet filters (price, size, color, brand)
-- [ ] Product detail: variant picker, images, reviews, related
-- [ ] Cart drawer / Cart page, quantity stepper, recommended products
-- [ ] Checkout flow: Address → Shipping → Payment → Order Confirmed
-- [ ] "My Orders" page + tracking
-- [ ] Admin: Category tree editor, Product CRUD with variant matrix, inventory adjust
-- [ ] Returns & refunds hook → flip order/booking to REFUNDED
-
-### 🤝 Phase 4 — Sports Community
-- [ ] User profiles: Sports, Skill level (Beginner → Pro)
-- [ ] "Create Game" (date/time/sport/court/skill cap) + invite link
-- [ ] "Find Players" → list of open games by city + sport
-- [ ] Join game → reserved player spot → group check-in at venue
-- [ ] Friending / chat (Supabase Realtime or Pusher later)
+- **Phase 1 / MVP**: Auth, Venue browse, Slot booking, My bookings
+- **Phase 2**: 🎾 **Essentials Upsell**, Combined payment, Arrival QR staff tablet, Near-me, Reminders
+- **Phase 3**: Mid-game on-demand QR, Off-peak deals, Play+Kit bundles, Referral, Play badges, Wallet UPI autopay, Playmate Prime membership, Venue owner occupancy dashboard
+- **Phase 4**: KitBag subscription, Leaderboards, **Find-a-Player** (post "need 2 doubles players"), B2B Pro Shop marketplace (Yonex/Li-Ning wholesale to venues)
 
 ---
 
-## 🚢 Deployment — Recommended Free / Low-Cost Path
-
-| Service | Provider | Notes |
-|---|---|---|
-| **Frontend** | Vercel Hobby | Auto-deploy from GitHub. Hobby = non-commercial; switch to Cloudflare Pages for commercial launch |
-| **Backend** | Render Free/Starter | Web Service from GH + Dockerfile (TODO). Free tier spins down → upgrade to $7/mo for always-on |
-| **PostgreSQL** | Supabase Free | 500 MB DB, 1 GB storage. Upgrade to Pro ($25/mo) as you grow |
-| **Images** | Supabase Storage | 1 GB free, same project as DB |
-| **Emails** | Resend Free tier | 3k emails/day forever |
-| **Payments** | Razorpay Standard | 2% + GST per txn, no monthly fee |
-| **Domain** | Cloudflare / Namecheap | Point `playmate.in` A/CNAME → Vercel + Render |
-
-CI/CD (later): GitHub Actions → lint + typecheck on PR, deploy Vercel/Render preview.
-
----
-
-## 🔒 Security Checklist (Before Launch)
-- [ ] Supabase RLS policies on every table (currently API uses service_role bypass)
-- [ ] AuthGuard + RolesGuard on every non-public endpoint (add `@Public()` decorator)
-- [ ] Rate limiting (NestJS ThrottlerModule) on auth, bookings, checkout
-- [ ] CORS whitelist exact origins in prod
-- [ ] Validated `Referer` + `Origin` on Razorpay webhook endpoint
-- [ ] `HttpOnly` + `Secure` cookies if using session instead of Bearer
-- [ ] CSP headers + `next/headers` in frontend layout
-
----
-
-## 📘 API Highlights
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/health` | liveness |
-| POST | `/api/auth/signup` / `/login` / `/logout` | Supabase auth |
-| GET | `/api/auth/me` | current user (Bearer) |
-| GET | `/api/sports?search=` | list active sports |
-| GET | `/api/venues?sportId=&city=&date=&startTime=&endTime=&minPrice=&maxPrice=` | search venues with availability filter |
-| GET | `/api/venues/slug/:slug` | venue by slug |
-| GET | `/api/venues/:id/courts` / `/:id/slots?date=` | courts and available slots |
-| POST | `/api/courts/:id/slots/bulk` | batch generate weekly slots (Admin) |
-| POST | `/api/bookings` | create PENDING booking → returns Razorpay order |
-| POST | `/api/bookings/:id/confirm` | manual confirm (webhook does this) |
-| DELETE | `/api/bookings/:id` | cancel + flip slot available |
-| POST | `/api/bookings/expire-pending` | cron endpoint |
-| GET | `/api/categories/tree` | hierarchical nav tree |
-| GET | `/api/products?categorySlug=&minPrice=&maxPrice=&brand=&sortBy=` | search + sort products |
-| POST | `/api/cart/items` / PATCH / DELETE | cart operations |
-| POST | `/api/orders/checkout` | ⚠️ transactional checkout → Razorpay order |
-| POST | `/api/payments/razorpay/webhook` | Razorpay HMAC-signed webhook |
-| GET | `/api/bookings/my` / `/api/orders/my` / `/api/notifications` | user data |
-| GET | `/api/admin/stats` | overview dashboard |
-
-Full Swagger/OpenAPI: `http://localhost:3001/docs` when running.
-
----
-
-## 💡 Design Principles
-
-1. **One backend, one DB, no microservices.** You will know when you need to split.
-2. **Modular boundaries are the future service lines.** The `bookings/` folder becomes the bookings microservice by copying one folder.
-3. **Every write that spans two tables is a transaction.** (See bookings.service and orders.service.)
-4. **Prefer row-level locks over app-level "check then write".** The DB is the source of truth for availability.
-5. **Idempotent webhooks.** Razorpay events can redeliver; handlers must survive being called twice with the same payload.
-6. **Zod at every boundary.** User input → API; env vars → config; webhook payloads → signature + shape.
-
----
-
-## 🤝 Contributing
+## 🧪 Tests
 
 ```bash
-# 1. Fork & clone
-# 2. Feature branch off main
-git checkout -b feat/venue-slots-calendar
-# 3. Work
-pnpm dev
-# 4. Verify
-pnpm typecheck && pnpm lint
-# 5. Commit (conventional)
-git commit -m "feat(venues): weekly slot generator UI"
-# 6. Open PR
+# Run API route tests
+pnpm --filter @playmate/api test
 ```
 
-Conventional commit prefixes: `feat / fix / docs / refactor / perf / test / chore / ci`.
+See [apps/api/test/README.md](apps/api/test/README.md) for test plan. Tested endpoints in this PR:
+- `GET /health` — liveness
+- `POST /auth/login` happy + invalid password 401
+- `GET /sports` list
+- `GET /venues?city=…&sportId=…` filters
+- `GET /venues/:id` → courts nested
+- **NEW** `GET /venue-essentials/venue/:venueId` catalog + recommendations
+- **NEW** `POST /bookings/:id/essentials` (attach to booking, validates stock + maxPerBooking, rolls line totals into booking total)
+- **NEW** `POST /on-demand-orders` (mid-game QR order) → inventory decrement
 
 ---
 
-## 📄 License
+## 🔒 Production Security Checklist
 
-MIT © Playmate
+1. **Enable RLS on ALL tables** in Supabase dashboard. (Auth guard is defense-in-depth; RLS is the real moat.)
+2. Rotate `SUPABASE_SERVICE_ROLE_KEY` every 6 months; never paste it anywhere but NestJS `.env`.
+3. Razorpay webhook signing secret validation in `payments.controller.ts` before marking a booking PAID.
+4. Rate-limit `/auth/*` endpoints at Supabase edge + at NestJS via `@nestjs/throttler`.
+5. DB backups (Supabase does Point-in-Time Recovery automatically on paid tier).
+6. Expo OTA channels: `production` → users; `staging` → internal.
+
+---
+
+## 📚 Also see
+
+- [HOSTING.md](./HOSTING.md) — Step-by-step: Render.com API, Supabase setup, Expo OTA, Play Store release, Razorpay webhook, Email, Domains/SSL.
+- [packages/validation/src/index.ts](packages/validation/src/index.ts) — Shared zod DTOs (one source of truth for client + server validation).
+- [apps/api/test/routes/](apps/api/test/routes) — Jest route tests.

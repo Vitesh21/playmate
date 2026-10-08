@@ -7,6 +7,7 @@ import { SportsModule } from "./sports/sports.module";
 import { VenuesModule } from "./venues/venues.module";
 import { CourtsModule } from "./courts/courts.module";
 import { BookingsModule } from "./bookings/bookings.module";
+import { VenueEssentialsModule } from "./venue-essentials/venue-essentials.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { ProductsModule } from "./products/products.module";
 import { InventoryModule } from "./inventory/inventory.module";
@@ -31,6 +32,7 @@ import { HealthModule } from "./health/health.module";
     VenuesModule,
     CourtsModule,
     BookingsModule,
+    VenueEssentialsModule,
     CategoriesModule,
     ProductsModule,
     InventoryModule,

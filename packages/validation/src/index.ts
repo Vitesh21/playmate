@@ -198,6 +198,89 @@ export const razorpayWebhookSchema = z.object({
   payload: z.record(z.unknown()),
 });
 
+/* =========================================================================
+   VENUE ESSENTIALS + ON-DEMAND ORDERS — new schemas for the
+   "forgot your racket? we'll bring it" flow.
+   ========================================================================= */
+
+export const essentialTypeSchema = z.enum(["RENT", "SALE", "ADDON"]);
+
+export const essentialPricingModelSchema = z.enum(["PER_HOUR", "PER_BOOKING", "FIXED"]);
+
+export const venueEssentialCreateSchema = z.object({
+  venueId: z.string().uuid("Invalid venue ID"),
+  sportId: z.string().uuid("Invalid sport ID"),
+  name: z.string().min(1, "Name is required").max(120, "Name must be under 120 characters"),
+  description: z.string().max(500, "Description must be under 500 characters").optional().nullable(),
+  imageUrl: z.string().url("Invalid image URL").optional().nullable(),
+  type: essentialTypeSchema,
+  pricingModel: essentialPricingModelSchema,
+  price: z.number().int().min(0, "Price must be non-negative (paise-free integers = INR)"),
+  compareAtPrice: z.number().int().min(0, "Compare-at price must be non-negative").optional().nullable(),
+  stockQuantity: z.number().int().min(0, "Stock cannot be negative").default(0),
+  maxPerBooking: z.number().int().min(1, "Max per booking must be at least 1").default(4),
+  tags: z.array(z.string().min(1)).default([]),
+  categories: z.array(z.string().min(1)).default([]),
+  isActive: z.boolean().default(true),
+});
+
+export const venueEssentialUpdateSchema = venueEssentialCreateSchema.partial();
+
+export const venueEssentialSearchSchema = paginationSchema.extend({
+  sportId: z.string().uuid().optional(),
+  type: essentialTypeSchema.optional(),
+  category: z.string().min(1).optional(),
+  inStockOnly: z.coerce.boolean().optional().default(false),
+});
+
+const bookingEssentialItemInputSchema = z.object({
+  essentialId: z.string().uuid("Invalid essential ID"),
+  quantity: z.number().int().min(1, "Quantity must be >= 1").max(20, "Max 20 units per item"),
+  durationHours: z
+    .number()
+    .int()
+    .min(1, "Duration must be >= 1 hour")
+    .max(24, "Max 24h rental")
+    .optional()
+    .nullable(),
+});
+
+export const attachEssentialsToBookingSchema = z.object({
+  items: z
+    .array(bookingEssentialItemInputSchema)
+    .min(1, "At least one essential item is required")
+    .max(10, "Maximum 10 line items per booking"),
+});
+
+export const onDemandOrderStatusSchema = z.enum([
+  "REQUESTED",
+  "PREPARING",
+  "DELIVERED",
+  "CANCELLED",
+]);
+
+const onDemandOrderItemInputSchema = z.object({
+  essentialId: z.string().uuid("Invalid essential ID"),
+  quantity: z.number().int().min(1, "Quantity must be >= 1").max(20, "Max 20 units per item"),
+});
+
+export const onDemandOrderCreateSchema = z.object({
+  bookingId: z.string().uuid("Invalid booking ID"),
+  deliveryNote: z
+    .string()
+    .max(240, "Delivery note must be under 240 characters")
+    .optional()
+    .nullable(),
+  items: z
+    .array(onDemandOrderItemInputSchema)
+    .min(1, "At least one item is required")
+    .max(10, "Maximum 10 line items per on-demand order"),
+});
+
+export const onDemandOrderUpdateStatusSchema = z.object({
+  status: onDemandOrderStatusSchema,
+});
+
 export type PaginationInput = z.infer<typeof paginationSchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
 export type SlugParam = z.infer<typeof slugParamSchema>;

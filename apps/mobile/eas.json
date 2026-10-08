@@ -1,0 +1,49 @@
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "env": {
+          "APP_ENV": "development"
+        }
+      },
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "env": {
+          "APP_ENV": "staging"
+        }
+      },
+      "channel": "preview"
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle",
+        "env": {
+          "APP_ENV": "production"
+        }
+      },
+      "ios": {},
+      "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./play-service-account-key.json",
+        "track": "internal"
+      },
+      "ios": {
+        "ascAppId": "",
+        "appleId": ""
+      }
+    }
+  }
+}
