@@ -1,9 +1,14 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DefaultTheme as NavDefault,
+  DarkTheme as NavDark,
+} from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View } from 'react-native';
+import React from 'react';
+import { Text, View, StyleSheet } from 'react-native';
 import { useAuthStore } from '@store/auth.store';
-import { colors, spacing } from '@theme/index';
+import { useTheme } from '@theme/index';
 import type {
   AuthStackParamList,
   HomeStackParamList,
@@ -22,36 +27,35 @@ const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
 const RootTab = createBottomTabNavigator<RootTabParamList>();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 
-const navTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    primary: colors.primary[600],
-    background: colors.background.screen,
-    card: colors.background.primary,
-    text: colors.text.primary,
-    border: colors.border.light,
-    notification: colors.error[500],
-  },
-};
-
 function Placeholder({ title }: { title: string }) {
+  const { colors, typography } = useTheme();
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text style={{ fontSize: 20, fontWeight: '600', color: colors.text.primary }}>{title}</Text>
+      <Text style={{ fontSize: 20, fontWeight: '600', color: colors.text.primary, ...typography.h5 }}>
+        {title}
+      </Text>
     </View>
   );
 }
 
+function screenOptions() {
+  const { colors, typography } = useTheme();
+  return {
+    headerStyle: { backgroundColor: colors.background.primary, shadowColor: 'transparent' },
+    headerTitleStyle: {
+      ...typography.h5,
+      color: colors.text.primary,
+    },
+    headerTintColor: colors.text.secondary,
+    headerShadowVisible: false,
+    contentStyle: { backgroundColor: colors.background.screen },
+  };
+}
+
 function AuthNavigator() {
+  const opts = screenOptions();
   return (
-    <AuthStack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background.primary },
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: colors.background.screen },
-      }}
-    >
+    <AuthStack.Navigator screenOptions={opts}>
       <AuthStack.Screen name="Login" options={{ title: 'Welcome Back' }}>
         {() => <Placeholder title="Login Screen" />}
       </AuthStack.Screen>
@@ -66,14 +70,9 @@ function AuthNavigator() {
 }
 
 function HomeNavigator() {
+  const opts = screenOptions();
   return (
-    <HomeStack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background.primary },
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: colors.background.screen },
-      }}
-    >
+    <HomeStack.Navigator screenOptions={opts}>
       <HomeStack.Screen name="Home" options={{ title: 'Playmate' }}>
         {() => <Placeholder title="Home Screen" />}
       </HomeStack.Screen>
@@ -87,7 +86,7 @@ function HomeNavigator() {
         {() => <Placeholder title="Slot Picker" />}
       </HomeStack.Screen>
       <HomeStack.Screen name="BookingConfirm" options={{ title: 'Confirm Booking' }}>
-        {() => <Placeholder title="Confirm Booking" />}
+        {() => <Placeholder title="Confirm Booking + Essentials" />}
       </HomeStack.Screen>
       <HomeStack.Screen name="ProductDetail" options={{ title: 'Product' }}>
         {() => <Placeholder title="Product Detail" />}
@@ -99,21 +98,16 @@ function HomeNavigator() {
         {() => <Placeholder title="Sport Venues" />}
       </HomeStack.Screen>
       <HomeStack.Screen name="Search" options={{ title: 'Search' }}>
-        {() => <Placeholder title="Search" />}
+        {() => <Placeholder title="Search venues, products" />}
       </HomeStack.Screen>
     </HomeStack.Navigator>
   );
 }
 
 function ShopNavigator() {
+  const opts = screenOptions();
   return (
-    <ShopStack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background.primary },
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: colors.background.screen },
-      }}
-    >
+    <ShopStack.Navigator screenOptions={opts}>
       <ShopStack.Screen name="ShopHome" options={{ title: 'Shop' }}>
         {() => <Placeholder title="Shop Home" />}
       </ShopStack.Screen>
@@ -137,33 +131,23 @@ function ShopNavigator() {
 }
 
 function BookingsNavigator() {
+  const opts = screenOptions();
   return (
-    <BookingsStack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background.primary },
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: colors.background.screen },
-      }}
-    >
+    <BookingsStack.Navigator screenOptions={opts}>
       <BookingsStack.Screen name="BookingsList" options={{ title: 'My Bookings' }}>
         {() => <Placeholder title="Bookings List" />}
       </BookingsStack.Screen>
       <BookingsStack.Screen name="BookingDetail" options={{ title: 'Booking' }}>
-        {() => <Placeholder title="Booking Detail" />}
+        {() => <Placeholder title="Booking + Essentials" />}
       </BookingsStack.Screen>
     </BookingsStack.Navigator>
   );
 }
 
 function ProfileNavigator() {
+  const opts = screenOptions();
   return (
-    <ProfileStack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background.primary },
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: colors.background.screen },
-      }}
-    >
+    <ProfileStack.Navigator screenOptions={opts}>
       <ProfileStack.Screen name="ProfileHome" options={{ title: 'Profile' }}>
         {() => <Placeholder title="Profile Home" />}
       </ProfileStack.Screen>
@@ -183,21 +167,27 @@ function ProfileNavigator() {
         {() => <Placeholder title="Notifications" />}
       </ProfileStack.Screen>
       <ProfileStack.Screen name="Settings" options={{ title: 'Settings' }}>
-        {() => <Placeholder title="Settings" />}
+        {() => <Placeholder title="Appearance · Theme · Dark Mode" />}
+      </ProfileStack.Screen>
+      <ProfileStack.Screen name="Wallet" options={{ title: 'Wallet' }}>
+        {() => <Placeholder title="Wallet + Prime" />}
       </ProfileStack.Screen>
     </ProfileStack.Navigator>
   );
 }
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
+function TabLabel({ label, focused }: { label: string; focused: boolean }) {
+  const { colors, spacing, typography } = useTheme();
   return (
     <Text
-      style={{
-        fontSize: 12,
-        fontWeight: focused ? '700' : '500',
-        color: focused ? colors.primary[600] : colors.text.tertiary,
-        marginTop: spacing.xs,
-      }}
+      style={[
+        typography.caption,
+        {
+          fontWeight: focused ? '700' : '500',
+          color: focused ? colors.primary[600] : colors.text.tertiary,
+          marginTop: spacing.xs,
+        },
+      ]}
     >
       {label}
     </Text>
@@ -205,6 +195,7 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
 }
 
 function MainNavigator() {
+  const { colors } = useTheme();
   return (
     <RootTab.Navigator
       screenOptions={{
@@ -213,8 +204,9 @@ function MainNavigator() {
           backgroundColor: colors.background.primary,
           borderTopColor: colors.border.light,
           height: 64,
-          paddingBottom: spacing.md,
-          paddingTop: spacing.sm,
+          paddingBottom: 12,
+          paddingTop: 8,
+          borderTopWidth: StyleSheet.hairlineWidth,
         },
         tabBarActiveTintColor: colors.primary[600],
         tabBarInactiveTintColor: colors.text.tertiary,
@@ -225,28 +217,28 @@ function MainNavigator() {
         name="HomeTab"
         component={HomeNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon label="Home" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabLabel label="Play" focused={focused} />,
         }}
       />
       <RootTab.Screen
         name="ShopTab"
         component={ShopNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon label="Shop" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabLabel label="Shop" focused={focused} />,
         }}
       />
       <RootTab.Screen
         name="BookingsTab"
         component={BookingsNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon label="Bookings" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabLabel label="Bookings" focused={focused} />,
         }}
       />
       <RootTab.Screen
         name="ProfileTab"
         component={ProfileNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon label="Profile" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabLabel label="Profile" focused={focused} />,
         }}
       />
     </RootTab.Navigator>
@@ -256,11 +248,39 @@ function MainNavigator() {
 export function RootNavigator() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const { resolvedMode, colors, typography } = useTheme();
+
+  const navTheme =
+    resolvedMode === 'dark'
+      ? {
+          ...NavDark,
+          colors: {
+            ...NavDark.colors,
+            primary: colors.primary[500],
+            background: colors.background.screen,
+            card: colors.background.primary,
+            text: colors.text.primary,
+            border: colors.border.light,
+            notification: colors.error[500],
+          },
+        }
+      : {
+          ...NavDefault,
+          colors: {
+            ...NavDefault.colors,
+            primary: colors.primary[600],
+            background: colors.background.screen,
+            card: colors.background.primary,
+            text: colors.text.primary,
+            border: colors.border.light,
+            notification: colors.error[500],
+          },
+        };
 
   if (isLoading) {
     return (
       <NavigationContainer theme={navTheme}>
-        <Placeholder title="Loading..." />
+        <Placeholder title="Loading…" />
       </NavigationContainer>
     );
   }

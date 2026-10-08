@@ -406,3 +406,243 @@ export type PaginationParams = {
   page?: number;
   perPage?: number;
 };
+
+/* ==========================================================================
+   VENUE ESSENTIALS — the "forgot your racket? we'll bring it to court" flow.
+   Inspired by "District" style all-in-one venue experience:
+     - When a user books a court, we upsell RENTABLE items (rackets, shuttle
+       tubes, grip tape) + CONSUMABLES delivered to the court on arrival.
+     - Can also be ordered "on demand" after check-in via QR scan at venue.
+   ========================================================================== */
+
+/**
+ * Is this essential rented per booking, or sold as a consumable?
+ *  RENT     → "Badminton Racket Pro" · ₹80/court-hour · returned post-play
+ *  SALE     → "Yonex Mavis 350 (tube of 6)" · ₹420 · customer keeps
+ *  ADDON    → "Court Mop + Towel Service" · ₹50 flat per booking
+ */
+export enum EssentialType {
+  RENT = "RENT",
+  SALE = "SALE",
+  ADDON = "ADDON",
+}
+
+/**
+ * Pricing strategy for a venue-essential SKU.
+ *  PER_HOUR  → price × booking duration in hours (racket rental)
+ *  PER_BOOKING → flat fee per booking regardless of length (towel service)
+ *  FIXED    → price × quantity (shuttle tube - consumable sale)
+ */
+export enum EssentialPricingModel {
+  PER_HOUR = "PER_HOUR",
+  PER_BOOKING = "PER_BOOKING",
+  FIXED = "FIXED",
+}
+
+/**
+ * A "Pro Shop" catalog item that a venue keeps on hand to hand to players.
+ * FK → venue. One venue → many essentials (badminton rackets, shuttle tubes,
+ * basketballs, table-tennis balls, grip tape, sweat bands, …).
+ */
+export type VenueEssential = {
+  id: ID;
+  venueId: ID;
+  sportId: ID;
+  /** e.g. "Yonex Nanoray 7000i (Rental Racket)" */
+  name: string;
+  /** Short description shown next to the SKU. */
+  description?: string | null;
+  /** Image URL - same Supabase venues bucket for convenience. */
+  imageUrl?: string | null;
+  type: EssentialType;
+  pricingModel: EssentialPricingModel;
+  /** Base price in INR - interpreted per pricingModel above. */
+  price: number;
+  /** Strike-through "MRP" for visual discount cues. */
+  compareAtPrice?: number | null;
+  /** On-hand stock. RENT items decrement per overlapping booking hour. */
+  stockQuantity: number;
+  /** Max units a single booking can add. e.g. rackets: 4; shuttle: 2 tubes. */
+  maxPerBooking: number;
+  /** Comma-free search tags: ["racket", "yonex", "graphite", "4u"]. */
+  tags: string[];
+  /** Quick-fit filter chips on the booking-addon screen. */
+  categories: string[];
+  isActive: boolean;
+} & Timestamp;
+
+/**
+ * A line-item attached to a booking (not to an e-commerce Order) for
+ * rackets/shuttles/add-ons delivered to the court. Payment rolls into the
+ * same Razorpay booking transaction so user pays once.
+ */
+export type BookingEssential = {
+  id: ID;
+  bookingId: ID;
+  essentialId: ID;
+  /** Snapshot of SKU name, price, model at checkout so edits to catalog
+   *  never retroactively change old receipts. */
+  nameSnapshot: string;
+  typeSnapshot: EssentialType;
+  pricingModelSnapshot: EssentialPricingModel;
+  /** Unit price at booking time (INR). */
+  unitPriceSnapshot: number;
+  /** How many the user ordered. */
+  quantity: number;
+  /** For PER_HOUR items: how many hours they rented (usually = booking length). */
+  durationHours?: number | null;
+  /** Computed line total = unitPrice × qty (× duration if PER_HOUR). */
+  lineTotal: number;
+  /**
+   *  PENDING   → line created, not yet handed over by venue staff
+   *  DELIVERED → staff scanned QR / marked "given to court X"
+   *  RETURNED  → RENT item returned post-session
+   *  DAMAGED   → extra charge may be raised on the payment
+   */
+  fulfillmentStatus: "PENDING" | "DELIVERED" | "RETURNED" | "DAMAGED";
+} & Timestamp;
+
+/**
+ * A "Need-a-Racket?" quick-rec shown above the slot picker after a user
+ * selects a court + time. UI: horizontal rail of recommended essentials
+ * filtered by sportId of the venue.
+ */
+export type EssentialRecommendation = {
+  essential: VenueEssential;
+  /** "Most booked at this venue", "Beginners' pick", "Stock low". */
+  badge?: string | null;
+  /** 0..1 sort weight: higher = shown first in the rail. */
+  weight: number;
+};
+
+/**
+ * User scans a QR code stuck on the court door during a session to
+ * add more shuttles / water / grips mid-play.
+ */
+export type OnDemandOrder = {
+  id: ID;
+  bookingId: ID;
+  userId: ID;
+  /** e.g. "Court 3, delivered to bench nearest net" */
+  deliveryNote?: string | null;
+  totalAmount: number;
+  paymentId?: ID | null;
+  status: "REQUESTED" | "PREPARING" | "DELIVERED" | "CANCELLED";
+  requestedAt: Date;
+  deliveredAt?: Date | null;
+} & Timestamp;
+
+export type OnDemandOrderItem = {
+  id: ID;
+  onDemandOrderId: ID;
+  essentialId: ID;
+  nameSnapshot: string;
+  unitPriceSnapshot: number;
+  quantity: number;
+  lineTotal: number;
+} & Timestamp;
+
+/* ==========================================================================
+   COMPLETE FEATURE ROADMAP — visible in types so API + Mobile plan together.
+   Grouped by release (MVP → 1.1 → 1.5 → 2.0).
+   ========================================================================== */
+
+export enum RoadmapTrack {
+  MVP_CORE = "MVP_CORE",
+  VENUE_ESSENTIALS = "VENUE_ESSENTIALS",
+  ENGAGEMENT = "ENGAGEMENT",
+  DISCOVERABILITY = "DISCOVERABILITY",
+  COMMUNITY = "COMMUNITY",
+  WALLET_SUBSCRIPTIONS = "WALLET_SUBSCRIPTIONS",
+  VENUE_OWNER_DASHBOARD = "VENUE_OWNER_DASHBOARD",
+  B2B_PRO_SHOP = "B2B_PRO_SHOP",
+}
+
+export type RoadmapFeature = {
+  id: string;
+  track: RoadmapTrack;
+  title: string;
+  description: string;
+  /** Rough release milestone ordering. */
+  phase: 1 | 2 | 3 | 4;
+  /** Which parts of the monorepo are touched. */
+  surface: Array<"mobile" | "api" | "shared-types" | "validation" | "admin-web" | "billing" | "notifications">;
+  userValue: string;
+};
+
+export const ROADMAP: RoadmapFeature[] = [
+  { id: "mvp-auth", track: RoadmapTrack.MVP_CORE, phase: 1,
+    title: "Phone + Email + Google Auth via Supabase", description: "Login with OTP on phone, email/password, Google OAuth.",
+    surface: ["mobile", "api", "shared-types"], userValue: "Frictionless sign-up, verified user profiles." },
+  { id: "mvp-venue-browse", track: RoadmapTrack.MVP_CORE, phase: 1,
+    title: "Browse venues by sport/city with filters", description: "Sports chip bar → Venue list → Venue detail → Courts grid.",
+    surface: ["mobile", "api", "shared-types"], userValue: "Find badminton/basketball/football courts near the user." },
+  { id: "mvp-slot-booking", track: RoadmapTrack.MVP_CORE, phase: 1,
+    title: "Slot booking + 15-min soft-lock + Razorpay", description: "Pick slot → create booking (slot held) → Razorpay checkout → webhook confirms.",
+    surface: ["mobile", "api", "shared-types", "validation"], userValue: "1-tap booking, never double-booked." },
+  { id: "mvp-my-bookings", track: RoadmapTrack.MVP_CORE, phase: 1,
+    title: "Upcoming / Past bookings + 24h cancellation", description: "Calendar view, cancel before 24h → auto-refund, reschedule flow.",
+    surface: ["mobile", "api"], userValue: "Manage all bookings in one list." },
+
+  { id: "essentials-upsell", track: RoadmapTrack.VENUE_ESSENTIALS, phase: 2,
+    title: "\"Need a Racket?\" upsell on booking confirm screen", description: "After slot-pick, show venue's rental rackets, shuttle tubes, towel add-ons.",
+    surface: ["mobile", "api", "shared-types"], userValue: "Player shows up empty-handed → still plays. Venue earns rental revenue." },
+  { id: "essentials-pay-together", track: RoadmapTrack.VENUE_ESSENTIALS, phase: 2,
+    title: "Essentials + court billed as one Razorpay order", description: "BookingEssential lines rolled into booking total_amount; single checkout.",
+    surface: ["mobile", "api"], userValue: "One payment for everything - no split bills at venue." },
+  { id: "essentials-checkin-qr", track: RoadmapTrack.VENUE_ESSENTIALS, phase: 2,
+    title: "Arrival QR scan → staff prepares gear", description: "QR on booking ticket scans to Pro Shop tablet: 'Court 2 wants 2 rackets + 1 Mavis tube'.",
+    surface: ["mobile", "api", "admin-web"], userValue: "Gear is ready the moment user walks in, zero queue at desk." },
+  { id: "essentials-mid-game", track: RoadmapTrack.VENUE_ESSENTIALS, phase: 3,
+    title: "Mid-game on-demand essentials via court QR", description: "QR on court wall → opens 'Add more shuttles / water / grip tape'. Staff delivers within 5 min.",
+    surface: ["mobile", "api", "shared-types"], userValue: "No more running to the shop mid-rally." },
+  { id: "essentials-subscription-bag", track: RoadmapTrack.VENUE_ESSENTIALS, phase: 4,
+    title: "\"My Kit Bag\" subscription: recurring racket stringing + shuttle plan", description: "₹999/mo → 2 restrings + 4 shuttle tubes + priority court 10% off.",
+    surface: ["mobile", "api", "billing"], userValue: "Power players save >30% vs a la carte. Predictable revenue." },
+
+  { id: "discover-near-me", track: RoadmapTrack.DISCOVERABILITY, phase: 2,
+    title: "\"Near Me\" geo search + map view (PostGIS)", description: "Location permissions → 5km radius venues sorted by distance + price.",
+    surface: ["mobile", "api"], userValue: "Court discovery in 2 taps, not a long filter session." },
+  { id: "discover-deals", track: RoadmapTrack.DISCOVERABILITY, phase: 3,
+    title: "Happy-hour slots + off-peak discount chips", description: "6am-9am / 2pm-5pm marked '25% OFF' badges on slot picker.",
+    surface: ["mobile", "api"], userValue: "Users try new venues; venues fill empty off-peak slots." },
+  { id: "discover-bundle", track: RoadmapTrack.DISCOVERABILITY, phase: 3,
+    title: "\"Play + Essentials\" combo bundles", description: "1h badminton + 2 rackets + 1 shuttle tube = flat ₹599 instead of ₹680.",
+    surface: ["mobile", "api"], userValue: "Single-click perfect booking; price anchor nudges add-on conversion." },
+
+  { id: "engage-reminders", track: RoadmapTrack.ENGAGEMENT, phase: 2,
+    title: "Push + WhatsApp booking reminders (24h / 2h / 15m)", description: "FCM tokens → reminders + 'Tap to add shuttles' CTA inside.",
+    surface: ["mobile", "api", "notifications"], userValue: "Nobody forgets. Less show-rate loss for venues." },
+  { id: "engage-referral", track: RoadmapTrack.ENGAGEMENT, phase: 3,
+    title: "Refer-a-friend wallet credits", description: "Refer → both get ₹200 on friend's first confirmed booking.",
+    surface: ["mobile", "api"], userValue: "Organic growth loop, CAC drop." },
+  { id: "engage-badges", track: RoadmapTrack.ENGAGEMENT, phase: 3,
+    title: "Play badges: Weekly Warrior, Racket Rookie, Weekend Champion", description: "Gamified unlocks tied to booking count + venue variety.",
+    surface: ["mobile", "api"], userValue: "Stickiness; users come back 'just to level up'." },
+
+  { id: "community-leaderboard", track: RoadmapTrack.COMMUNITY, phase: 4,
+    title: "Venue leaderboards + local rankings", description: "Monthly hours-played leaderboard per venue; top-10 get free slot.",
+    surface: ["mobile", "api"], userValue: "Healthy competition; venue pride." },
+  { id: "community-find-a-player", track: RoadmapTrack.COMMUNITY, phase: 4,
+    title: "\"Find a Player\" for partial groups", description: "Booked 1 court but only 2/4 → post 'Looking for 2 intermediate doubles players' in app.",
+    surface: ["mobile", "api", "shared-types"], userValue: "Solves the #1 pain point of casual sport - getting enough people." },
+
+  { id: "wallet-upi-topup", track: RoadmapTrack.WALLET_SUBSCRIPTIONS, phase: 3,
+    title: "Playmate Wallet + UPI AutoTopUp", description: "Razorpay UPI autopay; 1-tap checkout in < 2 seconds. Cashback for wallet pays.",
+    surface: ["mobile", "api"], userValue: "Fastest checkout path; repeat purchase rate jumps." },
+  { id: "wallet-membership", track: RoadmapTrack.WALLET_SUBSCRIPTIONS, phase: 3,
+    title: "Playmate Prime: ₹499/mo flat 10% off + 2h free court credit", description: "Subscription membership - Netflix-style for your sports life.",
+    surface: ["mobile", "api"], userValue: "High LTV anchor; price moat vs Playo/District." },
+
+  { id: "owner-occupancy", track: RoadmapTrack.VENUE_OWNER_DASHBOARD, phase: 3,
+    title: "Venue Owner dashboard: occupancy heatmap + revenue charts", description: "Owner app / admin-web: which slots are undersold? Should I drop price Tue 3pm?",
+    surface: ["api", "admin-web"], userValue: "Venue owners earn more, so they stay loyal to Playmate vs listing elsewhere." },
+  { id: "owner-staff-scan", track: RoadmapTrack.VENUE_ESSENTIALS, phase: 3,
+    title: "Staff tablet: 'Mark delivered' + quick item scan", description: "Pro shop marks racket picked up / returned in 1 tap.",
+    surface: ["admin-web"], userValue: "Operationalises the Essentials concept in real venues." },
+
+  { id: "proshop-marketplace", track: RoadmapTrack.B2B_PRO_SHOP, phase: 4,
+    title: "Pro Shop Marketplace: venue owners source stock via Playmate B2B", description: "Yonex / Li-Ning wholesale catalog + bulk-ship to venues; earn spread.",
+    surface: ["admin-web", "api"], userValue: "Monetise the supply side; lock venues in as B2B customers." },
+];
+

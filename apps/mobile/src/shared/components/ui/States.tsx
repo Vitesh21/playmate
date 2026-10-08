@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, StyleProp, ViewStyle } from 'react-native';
-import { colors, spacing, typography } from '@theme/index';
+import { useTheme } from '@theme/index';
 
 interface EmptyStateProps {
   title: string;
@@ -17,12 +17,36 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   action,
   style,
 }) => {
+  const { colors, spacing, typography } = useTheme();
+  const s = StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xxl,
+      paddingVertical: spacing.xxxl,
+    },
+    icon: { marginBottom: spacing.lg },
+    title: {
+      ...typography.h4,
+      color: colors.text.primary,
+      textAlign: 'center',
+      marginBottom: spacing.xs,
+    },
+    description: {
+      ...typography.body2,
+      color: colors.text.tertiary,
+      textAlign: 'center',
+    },
+    action: { marginTop: spacing.xl, minWidth: 200 },
+  });
+
   return (
-    <View style={[styles.container, style]}>
-      {icon && <View style={styles.iconWrapper}>{icon}</View>}
-      <Text style={styles.title}>{title}</Text>
-      {description ? <Text style={styles.description}>{description}</Text> : null}
-      {action && <View style={styles.action}>{action}</View>}
+    <View style={[s.container, style]}>
+      {icon ? <View style={s.icon}>{icon}</View> : null}
+      <Text style={s.title}>{title}</Text>
+      {description ? <Text style={s.description}>{description}</Text> : null}
+      {action ? <View style={s.action}>{action}</View> : null}
     </View>
   );
 };
@@ -33,10 +57,21 @@ interface LoadingStateProps {
 }
 
 export const LoadingState: React.FC<LoadingStateProps> = ({ label, style }) => {
+  const { colors, spacing, typography } = useTheme();
+  const s = StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xxl,
+      paddingVertical: spacing.xxxl,
+    },
+    label: { marginTop: spacing.md, ...typography.body2, color: colors.text.tertiary },
+  });
   return (
-    <View style={[styles.container, style]}>
+    <View style={[s.container, style]}>
       <ActivityIndicator size="large" color={colors.primary[600]} />
-      {label ? <Text style={[styles.description, { marginTop: spacing.md }]}>{label}</Text> : null}
+      {label ? <Text style={s.label}>{label}</Text> : null}
     </View>
   );
 };
@@ -54,41 +89,26 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   action,
   style,
 }) => {
+  const { colors, spacing, typography } = useTheme();
+  const s = StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xxl,
+      paddingVertical: spacing.xxxl,
+    },
+    title: { ...typography.h4, color: colors.error[600], textAlign: 'center', marginBottom: spacing.xs },
+    description: { ...typography.body2, color: colors.text.tertiary, textAlign: 'center' },
+    action: { marginTop: spacing.xl, minWidth: 200 },
+  });
   return (
-    <View style={[styles.container, style]}>
-      <Text style={[styles.title, { color: colors.error[600] }]}>{title}</Text>
-      {description ? <Text style={styles.description}>{description}</Text> : null}
-      {action && <View style={styles.action}>{action}</View>}
+    <View style={[s.container, style]}>
+      <Text style={s.title}>{title}</Text>
+      <Text style={s.description}>{description}</Text>
+      {action ? <View style={s.action}>{action}</View> : null}
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.xxxl,
-  },
-  iconWrapper: {
-    marginBottom: spacing.lg,
-  },
-  title: {
-    ...typography.h4,
-    color: colors.text.primary,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  description: {
-    ...typography.body2,
-    color: colors.text.tertiary,
-    textAlign: 'center',
-  },
-  action: {
-    marginTop: spacing.xl,
-    minWidth: 200,
-  },
-});
 
 export default EmptyState;

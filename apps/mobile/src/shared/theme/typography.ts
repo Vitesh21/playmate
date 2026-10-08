@@ -3,18 +3,18 @@ export const typography = {
     fontSize: 32,
     lineHeight: 40,
     fontWeight: '700' as const,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   h2: {
     fontSize: 28,
     lineHeight: 36,
     fontWeight: '700' as const,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   h3: {
     fontSize: 24,
     lineHeight: 32,
-    fontWeight: '700' as const,
+    fontWeight: '600' as const,
   },
   h4: {
     fontSize: 20,
@@ -55,14 +55,14 @@ export const typography = {
     fontSize: 10,
     lineHeight: 14,
     fontWeight: '600' as const,
-    letterSpacing: 1,
+    letterSpacing: 0.8,
     textTransform: 'uppercase' as const,
   },
   button: {
     fontSize: 16,
     lineHeight: 24,
     fontWeight: '600' as const,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
 } as const;
 
