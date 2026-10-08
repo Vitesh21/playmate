@@ -29,7 +29,7 @@ export class NotificationsService {
   }
 
   async unreadCount(userId: string) {
-    const [[result]] = await this.db
+    const [result] = await this.db
       .select({ value: count() })
       .from(notifications)
       .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));

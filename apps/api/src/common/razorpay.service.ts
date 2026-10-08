@@ -24,7 +24,7 @@ import { getConfig } from "@playmate/config";
 @Injectable()
 export class RazorpayService implements OnModuleInit {
   /** Underlying Razorpay SDK client — keeps it private so HMAC secret stays in this file. */
-  private client: Razorpay;
+  private client!: Razorpay;
 
   /**
    * Nest lifecycle: instantiate the SDK with key_id + key_secret from config.

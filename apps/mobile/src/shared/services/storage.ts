@@ -52,3 +52,4 @@ export const storage = {
 } as const;
 
 export type Storage = typeof storage;
+export default storage;

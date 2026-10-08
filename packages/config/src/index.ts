@@ -10,6 +10,10 @@
 
 import { z } from "zod";
 
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
 /**
  * Everything the apps MUST provide at runtime in .env (or Render/Vercel env panel).
  * Every field is validated: URLs parse as URLs, ports coerce to numbers, blanks throw.

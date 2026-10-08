@@ -19,7 +19,7 @@ import { getConfig } from "@playmate/config";
 @Injectable()
 export class EmailService implements OnModuleInit {
   /** Underlying Resend SDK client. Private to keep the API key inside this class. */
-  private client: Resend;
+  private client!: Resend;
 
   /**
    * Nest lifecycle hook: create the Resend client using the bearer API key

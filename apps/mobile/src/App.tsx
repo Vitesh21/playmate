@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import Toast from 'react-native-toast-message';
+import Toast, { BaseToast } from 'react-native-toast-message';
 import { StyleSheet, View } from 'react-native';
 import RootNavigator from './shared/navigation/RootNavigator';
 import { useAuthStore } from './shared/store/auth.store';
@@ -42,12 +42,12 @@ function ThemedApp() {
         config={{
           success: (props: any) => (
             <View style={[styles.toastBase, { backgroundColor: colors.success[50], borderLeftColor: colors.success[600] }]}>
-              <Toast.BaseToast {...props} />
+              <BaseToast {...props} />
             </View>
           ),
           error: (props: any) => (
             <View style={[styles.toastBase, { backgroundColor: colors.error[50], borderLeftColor: colors.error[600] }]}>
-              <Toast.BaseToast {...props} />
+              <BaseToast {...props} />
             </View>
           ),
         }}

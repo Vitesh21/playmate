@@ -1,8 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { DRIZZLE } from "@/db/database.module";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import * as schema from "@/db/schema";
-import { and, asc, desc, eq, inArray, sql, gt, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, gt, isNull, type SQL } from "drizzle-orm";
 import type {
   VenueEssentialCreateInput,
   VenueEssentialUpdateInput,
@@ -14,14 +13,14 @@ import type {
 
 @Injectable()
 export class VenueEssentialsService {
-  constructor(@Inject(DRIZZLE) private readonly db: PostgresJsDatabase<typeof schema>) {}
+  constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
 
   async search(filters: VenueEssentialSearchInput & { page?: number; limit?: number }) {
     const { venueId, sportId, type, isActive = true, page = 1, limit = 20 } = filters;
-    const where = [];
+    const where: SQL[] = [];
     if (venueId) where.push(eq(schema.venueEssentials.venueId, venueId));
     if (sportId) where.push(eq(schema.venueEssentials.sportId, sportId));
-    if (type) where.push(eq(schema.venueEssentials.type, type));
+    if (type) where.push(eq(schema.venueEssentials.type, type as any));
     if (isActive !== undefined) where.push(eq(schema.venueEssentials.isActive, isActive));
 
     return this.db
@@ -101,19 +100,22 @@ export class VenueEssentialsService {
       .orderBy(asc(schema.bookingEssentials.createdAt));
   }
 
-  async attachEssentialsToBooking(input: AttachEssentialsToBookingInput) {
-    const { bookingId, items } = input;
+  async attachEssentialsToBooking(input: AttachEssentialsToBookingInput & { bookingId?: string }) {
+    const bookingId = input.bookingId;
+    if (!bookingId) throw new Error("bookingId is required");
+    const items = input.items;
     return this.db.transaction(async (tx) => {
-      const essentialIds = items.map((i) => i.venueEssentialId);
+      const essentialIds = items.map((i: any) => i.venueEssentialId ?? i.essentialId);
       const rows = await tx
         .select()
         .from(schema.venueEssentials)
         .where(inArray(schema.venueEssentials.id, essentialIds));
       const byId = new Map(rows.map((r) => [r.id, r]));
 
-      const lines = items.map((it) => {
-        const e = byId.get(it.venueEssentialId);
-        if (!e) throw new Error(`Essential ${it.venueEssentialId} not found`);
+      const lines = items.map((it: any) => {
+        const id = it.venueEssentialId ?? it.essentialId;
+        const e = byId.get(id);
+        if (!e) throw new Error(`Essential ${id} not found`);
         if (it.quantity > e.maxPerBooking)
           throw new Error(
             `Quantity ${it.quantity} > maxPerBooking ${e.maxPerBooking} for ${e.name}`,
@@ -149,22 +151,23 @@ export class VenueEssentialsService {
           typeSnapshot: e.type,
           pricingModelSnapshot: e.pricingModel,
           fulfillmentStatus: "PENDING" as const,
-          notes: it.notes,
+          notes: it.notes ?? null,
         };
       });
 
       for (const it of items) {
+        const id = (it as any).venueEssentialId ?? (it as any).essentialId;
         await tx
           .update(schema.venueEssentials)
           .set({
             stockQuantity: sql`${schema.venueEssentials.stockQuantity} - ${it.quantity}`,
           })
-          .where(eq(schema.venueEssentials.id, it.venueEssentialId));
+          .where(eq(schema.venueEssentials.id, id));
       }
 
       const inserted = await tx
         .insert(schema.bookingEssentials)
-        .values(lines)
+        .values(lines as any)
         .onConflictDoNothing()
         .returning();
 
@@ -174,20 +177,22 @@ export class VenueEssentialsService {
 
   async createOnDemandOrder(input: OnDemandOrderCreateInput) {
     return this.db.transaction(async (tx) => {
-      const essentialIds = input.items.map((i) => i.venueEssentialId);
+      const essentialIds = input.items.map((i: any) => i.venueEssentialId ?? i.essentialId);
       const rows = await tx
         .select()
         .from(schema.venueEssentials)
         .where(inArray(schema.venueEssentials.id, essentialIds));
       const byId = new Map(rows.map((r) => [r.id, r]));
 
-      const itemLines = input.items.map((it) => {
-        const e = byId.get(it.venueEssentialId);
-        if (!e) throw new Error(`Essential ${it.venueEssentialId} not found`);
+      const itemLines = input.items.map((it: any) => {
+        const id = it.venueEssentialId ?? it.essentialId;
+        const e = byId.get(id);
+        if (!e) throw new Error(`Essential ${id} not found`);
         if (it.quantity > e.stockQuantity)
           throw new Error(`Insufficient stock for ${e.name}`);
         return {
-          ...it,
+          venueEssentialId: e.id,
+          quantity: it.quantity,
           nameSnapshot: e.name,
           unitPriceSnapshot: e.price,
           totalPriceSnapshot: e.price * it.quantity,
@@ -199,14 +204,18 @@ export class VenueEssentialsService {
       const [order] = await tx
         .insert(schema.onDemandOrders)
         .values({
-          userId: input.userId,
-          bookingId: input.bookingId,
+          userId: input.userId!,
+          bookingId: input.bookingId ?? null,
           status: "PENDING",
           totalAmount,
-          deliveryNote: input.deliveryNote,
-          courtNumber: input.courtNumber,
+          deliveryNote: input.deliveryNote ?? null,
+          courtNumber: input.courtNumber ?? null,
         })
         .returning();
+
+      if (!order) {
+        throw new Error("Failed to create on-demand order");
+      }
 
       const withOrderId = itemLines.map((l) => ({
         orderId: order.id,
@@ -226,7 +235,7 @@ export class VenueEssentialsService {
           .where(eq(schema.venueEssentials.id, l.venueEssentialId));
       }
 
-      await tx.insert(schema.onDemandOrderItems).values(withOrderId);
+      await tx.insert(schema.onDemandOrderItems).values(withOrderId as any);
 
       return { ...order, items: withOrderId };
     });
@@ -249,7 +258,7 @@ export class VenueEssentialsService {
   async updateOnDemandStatus(id: string, input: OnDemandOrderStatusInput) {
     const [row] = await this.db
       .update(schema.onDemandOrders)
-      .set({ status: input.status, updatedAt: new Date() })
+      .set({ status: input.status as any, updatedAt: new Date() })
       .where(eq(schema.onDemandOrders.id, id))
       .returning();
     return row;

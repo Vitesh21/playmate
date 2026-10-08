@@ -14,6 +14,7 @@ export class CartService {
     const [existing] = await this.db.select().from(carts).where(eq(carts.userId, userId)).limit(1);
     if (existing) return existing;
     const [created] = await this.db.insert(carts).values({ userId } satisfies NewCart).returning();
+    if (!created) throw new Error("Failed to create cart");
     return created;
   }
 
@@ -29,9 +30,9 @@ export class CartService {
         product: products,
       })
       .from(cartItems)
-      .where(eq(cartItems.cartId, cart.id))
       .innerJoin(productVariants, eq(productVariants.id, cartItems.variantId))
-      .innerJoin(products, eq(products.id, productVariants.productId));
+      .innerJoin(products, eq(products.id, productVariants.productId))
+      .where(eq(cartItems.cartId, cart.id));
 
     const subtotal = items.reduce((sum, item) => sum + (item.variant?.price ?? 0) * item.quantity, 0);
 

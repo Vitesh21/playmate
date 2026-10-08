@@ -13,6 +13,7 @@ import {
 } from "@nestjs/common";
 import { VenueEssentialsService } from "./venue-essentials.service";
 import { AuthGuard, RolesGuard } from "@/common/auth.guard";
+import { UserRole } from "@playmate/types";
 import {
   venueEssentialCreateSchema,
   venueEssentialUpdateSchema,
@@ -33,7 +34,7 @@ export class VenueEssentialsController {
   async search(@Query() query: Record<string, any>) {
     const filters = venueEssentialSearchSchema.partial().parse(query);
     const page = paginationSchema.parse(query);
-    const data = await this.svc.search({ ...filters, ...page });
+    const data = await this.svc.search({ ...filters, ...page } as any);
     return { success: true, data };
   }
 
@@ -56,7 +57,7 @@ export class VenueEssentialsController {
   // ---------- Catalog (write) — VENUE_OWNER or ADMIN ----------
 
   @Post()
-  @UseGuards(AuthGuard, new RolesGuard(["VENUE_OWNER", "ADMIN"]))
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
   async create(@Body() body: unknown) {
     const input = venueEssentialCreateSchema.parse(body);
     const data = await this.svc.create(input);
@@ -64,7 +65,7 @@ export class VenueEssentialsController {
   }
 
   @Patch(":id")
-  @UseGuards(AuthGuard, new RolesGuard(["VENUE_OWNER", "ADMIN"]))
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
   async update(@Param("id") id: string, @Body() body: unknown) {
     const input = venueEssentialUpdateSchema.parse(body);
     const data = await this.svc.update(id, input);
@@ -72,7 +73,7 @@ export class VenueEssentialsController {
   }
 
   @Delete(":id")
-  @UseGuards(AuthGuard, new RolesGuard(["VENUE_OWNER", "ADMIN"]))
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
   async remove(@Param("id") id: string) {
     await this.svc.remove(id);
     return { success: true, message: "Venue essential archived" };
@@ -122,7 +123,7 @@ export class VenueEssentialsController {
   }
 
   @Patch("on-demand/:id/status")
-  @UseGuards(AuthGuard, new RolesGuard(["VENUE_OWNER", "ADMIN"]))
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
   async updateOnDemandStatus(@Param("id") id: string, @Body() body: unknown) {
     const input = onDemandOrderUpdateStatusSchema.parse(body);
     const data = await this.svc.updateOnDemandStatus(id, input);

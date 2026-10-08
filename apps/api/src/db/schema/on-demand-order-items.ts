@@ -14,7 +14,10 @@ import {
   uuid,
   integer,
   text,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { onDemandOrders } from "./on-demand-orders";
 import { venueEssentials } from "./venue-essentials";
 
@@ -34,13 +37,13 @@ export const onDemandOrderItems = pgTable("on_demand_order_items", {
     .defaultNow()
     .notNull(),
 }, (table) => ({
-  orderEssentialUnique: {
-    unique: true,
-    columns: [table.orderId, table.venueEssentialId],
-  },
-  quantityPositive: { check: `quantity > 0` },
-  unitPriceNonNegative: { check: `unit_price_snapshot >= 0` },
-  totalPriceNonNegative: { check: `total_price_snapshot >= 0` },
+  orderEssentialUnique: uniqueIndex("order_essential_unique").on(
+    table.orderId,
+    table.venueEssentialId,
+  ),
+  quantityPositive: check("order_item_qty_positive", sql`quantity > 0`),
+  unitPriceNonNegative: check("order_item_unit_price", sql`unit_price_snapshot >= 0`),
+  totalPriceNonNegative: check("order_item_total_price", sql`total_price_snapshot >= 0`),
 }));
 
 export type OnDemandOrderItem = typeof onDemandOrderItems.$inferSelect;

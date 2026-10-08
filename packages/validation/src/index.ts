@@ -227,14 +227,17 @@ export const venueEssentialCreateSchema = z.object({
 export const venueEssentialUpdateSchema = venueEssentialCreateSchema.partial();
 
 export const venueEssentialSearchSchema = paginationSchema.extend({
+  venueId: z.string().uuid().optional(),
   sportId: z.string().uuid().optional(),
   type: essentialTypeSchema.optional(),
   category: z.string().min(1).optional(),
+  isActive: z.boolean().optional(),
   inStockOnly: z.coerce.boolean().optional().default(false),
 });
 
 const bookingEssentialItemInputSchema = z.object({
-  essentialId: z.string().uuid("Invalid essential ID"),
+  essentialId: z.string().uuid("Invalid essential ID").optional(),
+  venueEssentialId: z.string().uuid("Invalid venue essential ID").optional(),
   quantity: z.number().int().min(1, "Quantity must be >= 1").max(20, "Max 20 units per item"),
   durationHours: z
     .number()
@@ -243,9 +246,11 @@ const bookingEssentialItemInputSchema = z.object({
     .max(24, "Max 24h rental")
     .optional()
     .nullable(),
+  notes: z.string().optional().nullable(),
 });
 
 export const attachEssentialsToBookingSchema = z.object({
+  bookingId: z.string().uuid("Invalid booking ID").optional(),
   items: z
     .array(bookingEssentialItemInputSchema)
     .min(1, "At least one essential item is required")
@@ -253,19 +258,25 @@ export const attachEssentialsToBookingSchema = z.object({
 });
 
 export const onDemandOrderStatusSchema = z.enum([
-  "REQUESTED",
+  "PENDING",
+  "PLACED",
   "PREPARING",
+  "OUT_FOR_DELIVERY",
   "DELIVERED",
   "CANCELLED",
+  "REFUNDED",
 ]);
 
 const onDemandOrderItemInputSchema = z.object({
-  essentialId: z.string().uuid("Invalid essential ID"),
+  essentialId: z.string().uuid("Invalid essential ID").optional(),
+  venueEssentialId: z.string().uuid("Invalid venue essential ID").optional(),
   quantity: z.number().int().min(1, "Quantity must be >= 1").max(20, "Max 20 units per item"),
 });
 
 export const onDemandOrderCreateSchema = z.object({
-  bookingId: z.string().uuid("Invalid booking ID"),
+  bookingId: z.string().uuid("Invalid booking ID").optional().nullable(),
+  userId: z.string().uuid().optional(),
+  courtNumber: z.string().optional().nullable(),
   deliveryNote: z
     .string()
     .max(240, "Delivery note must be under 240 characters")
@@ -307,3 +318,9 @@ export type CartItemUpdateInput = z.infer<typeof cartItemUpdateSchema>;
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type ReviewCreateInput = z.infer<typeof reviewCreateSchema>;
 export type RazorpayWebhookInput = z.infer<typeof razorpayWebhookSchema>;
+export type VenueEssentialCreateInput = z.infer<typeof venueEssentialCreateSchema>;
+export type VenueEssentialUpdateInput = z.infer<typeof venueEssentialUpdateSchema>;
+export type VenueEssentialSearchInput = z.infer<typeof venueEssentialSearchSchema>;
+export type AttachEssentialsToBookingInput = z.infer<typeof attachEssentialsToBookingSchema>;
+export type OnDemandOrderCreateInput = z.infer<typeof onDemandOrderCreateSchema>;
+export type OnDemandOrderStatusInput = z.infer<typeof onDemandOrderUpdateStatusSchema>;

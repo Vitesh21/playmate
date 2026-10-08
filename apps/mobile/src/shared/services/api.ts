@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import Toast from 'react-native-toast-message';
 import type { ApiError, ApiResponse } from '@playmate/types';
@@ -21,14 +21,14 @@ class ApiClient {
       },
     });
 
-    this.instance.interceptors.request.use(this.handleRequest.bind(this));
+    this.instance.interceptors.request.use(this.handleRequest.bind(this) as any);
     this.instance.interceptors.response.use(
       this.handleResponse.bind(this),
       this.handleError.bind(this)
     );
   }
 
-  private async handleRequest(config: AxiosRequestConfig) {
+  private async handleRequest(config: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> {
     if (!this.token) {
       this.token = await SecureStore.getItemAsync(TOKEN_KEY);
     }
@@ -78,7 +78,7 @@ class ApiClient {
   }
 
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    return this.instance.get<T, T>(url, config);
+    return this.instance.get(url, config) as unknown as Promise<T>;
   }
 
   async post<T, D = unknown>(
@@ -86,7 +86,7 @@ class ApiClient {
     data?: D,
     config?: AxiosRequestConfig
   ): Promise<T> {
-    return this.instance.post<T, T, D>(url, data, config);
+    return this.instance.post(url, data, config) as unknown as Promise<T>;
   }
 
   async put<T, D = unknown>(
@@ -94,7 +94,7 @@ class ApiClient {
     data?: D,
     config?: AxiosRequestConfig
   ): Promise<T> {
-    return this.instance.put<T, T, D>(url, data, config);
+    return this.instance.put(url, data, config) as unknown as Promise<T>;
   }
 
   async patch<T, D = unknown>(
@@ -102,11 +102,11 @@ class ApiClient {
     data?: D,
     config?: AxiosRequestConfig
   ): Promise<T> {
-    return this.instance.patch<T, T, D>(url, data, config);
+    return this.instance.patch(url, data, config) as unknown as Promise<T>;
   }
 
   async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    return this.instance.delete<T, T>(url, config);
+    return this.instance.delete(url, config) as unknown as Promise<T>;
   }
 }
 

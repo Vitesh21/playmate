@@ -22,7 +22,9 @@ import {
   timestamp,
   uuid,
   integer,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 import { bookings } from "./bookings";
 import { payments } from "./payments";
@@ -56,7 +58,7 @@ export const onDemandOrders = pgTable("on_demand_orders", {
     .defaultNow()
     .notNull(),
 }, (table) => ({
-  totalAmountNonNegative: { check: `total_amount >= 0` },
+  totalAmountNonNegative: check("on_demand_orders_total_non_negative", sql`total_amount >= 0`),
 }));
 
 export type OnDemandOrder = typeof onDemandOrders.$inferSelect;

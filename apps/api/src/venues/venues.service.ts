@@ -44,23 +44,10 @@ export class VenuesService {
 
     const items: any[] = await query;
 
-    if (params.date && (params.startTime || params.endTime)) {
-      const venueIds = items.map((v) => v.id);
-      if (venueIds.length > 0) {
-        const slotFilters = [
-          inArray(courtSlots.venueId, venueIds),
-          eq(courtSlots.isAvailable, true),
-        ];
-        if (params.date) slotFilters.push(eq(courtSlots.date, params.date));
-        if (params.startTime) slotFilters.push(gte(courtSlots.startTime, params.startTime));
-        if (params.endTime) slotFilters.push(lte(courtSlots.endTime, params.endTime));
-      }
-    }
-
-    const [[totalObj]] = await this.db
+    const [totalObj] = await this.db
       .select({ value: count() })
       .from(venues)
-      .where(and(...filters));
+      .where(filters.length > 0 ? and(...filters) : undefined);
 
     const total = Number(totalObj?.value ?? 0);
     return { items, total, page, perPage, totalPages: Math.ceil(total / perPage) };

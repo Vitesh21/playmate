@@ -17,7 +17,7 @@ export class ProductsController {
   async search(@Query() query: Record<string, any>) {
     const search = productSearchSchema.partial().parse(query);
     const page = paginationSchema.parse(query);
-    const data = await this.productsService.search({ ...search, ...page });
+    const data = await this.productsService.search({ ...search, ...page } as any);
     return { success: true, data };
   }
 

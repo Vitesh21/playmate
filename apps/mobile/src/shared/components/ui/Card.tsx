@@ -11,7 +11,18 @@ interface CardProps {
   onPress?: () => void;
 }
 
-export const Card: React.FC<CardProps> = ({
+interface CardHeaderProps {
+  title: string;
+  subtitle?: string;
+  rightAction?: React.ReactNode;
+}
+
+export interface CardComponent extends React.FC<CardProps> {
+  Header: React.FC<CardHeaderProps>;
+  Divider: React.FC;
+}
+
+const CardBase: React.FC<CardProps> = ({
   children,
   style,
   elevation = 'sm',

@@ -80,9 +80,9 @@ export const Input: React.FC<BaseInputProps> = ({
           placeholderTextColor={colors.text.tertiary}
           style={[
             s.input,
-            leftIcon && s.inputWithLeftIcon,
-            rightIcon && s.inputWithRightIcon,
-            multiline && s.inputMultiline,
+            Boolean(leftIcon) && s.inputWithLeftIcon,
+            Boolean(rightIcon) && s.inputWithRightIcon,
+            Boolean(multiline) && s.inputMultiline,
             style,
           ]}
           multiline={multiline}

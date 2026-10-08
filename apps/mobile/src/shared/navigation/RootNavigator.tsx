@@ -31,7 +31,7 @@ function Placeholder({ title }: { title: string }) {
   const { colors, typography } = useTheme();
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text style={{ fontSize: 20, fontWeight: '600', color: colors.text.primary, ...typography.h5 }}>
+      <Text style={[{ color: colors.text.primary }, typography.h5]}>
         {title}
       </Text>
     </View>

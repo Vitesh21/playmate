@@ -63,7 +63,15 @@ export class ProductsService {
       .groupBy(productVariants.productId)
       .as("pv");
 
-    let baseQuery = this.db
+    if (params.categorySlug) {
+      const [cat] = await this.db.select({ id: categories.id }).from(categories).where(eq(categories.slug, params.categorySlug)).limit(1);
+      if (cat) filters.push(eq(products.categoryId, cat.id));
+    }
+
+    if (params.minPrice != null) filters.push(gte(variantsSub.minPrice, params.minPrice));
+    if (params.maxPrice != null) filters.push(lte(variantsSub.maxPrice, params.maxPrice));
+
+    const baseQuery = this.db
       .select({
         ...Object.fromEntries(Object.keys(products).map((k) => [k, (products as any)[k]])),
         minPrice: variantsSub.minPrice,
@@ -73,17 +81,9 @@ export class ProductsService {
       .leftJoin(variantsSub, eq(variantsSub.productId, products.id))
       .where(and(...filters));
 
-    if (params.minPrice != null) baseQuery = baseQuery.where(gte(variantsSub.minPrice, params.minPrice)) as any;
-    if (params.maxPrice != null) baseQuery = baseQuery.where(lte(variantsSub.maxPrice, params.maxPrice)) as any;
-
-    if (params.categorySlug) {
-      const [cat] = await this.db.select({ id: categories.id }).from(categories).where(eq(categories.slug, params.categorySlug)).limit(1);
-      if (cat) filters.push(eq(products.categoryId, cat.id));
-    }
-
     const items = await (baseQuery as any).orderBy(orderClause).limit(perPage).offset(offset);
 
-    const [[totalObj]] = await this.db
+    const [totalObj] = await this.db
       .select({ value: count() })
       .from(products)
       .where(and(...filters));

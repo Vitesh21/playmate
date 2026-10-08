@@ -21,11 +21,12 @@ export abstract class BaseService<TTable extends Record<string, any>, TNew, TUpd
 
     const where = filters.length > 0 ? and(...filters) : undefined;
 
-    const [items, [totalObj]] = await Promise.all([
-      this.db.select().from(this.table).where(where).orderBy(orderBy).limit(perPage).offset(offset),
-      this.db.select({ value: count() }).from(this.table).where(where),
+    const [items, totalRes] = await Promise.all([
+      this.db.select().from(this.table as any).where(where).orderBy(orderBy).limit(perPage).offset(offset),
+      this.db.select({ value: count() }).from(this.table as any).where(where),
     ]);
 
+    const totalObj = (totalRes as any)?.[0];
     const total = Number(totalObj?.value ?? 0);
 
     return {
@@ -40,20 +41,20 @@ export abstract class BaseService<TTable extends Record<string, any>, TNew, TUpd
   async findById(id: string) {
     const [record] = await this.db
       .select()
-      .from(this.table)
+      .from(this.table as any)
       .where(eq((this.table as any).id, id))
       .limit(1);
     return record;
   }
 
   async create(data: TNew) {
-    const [created] = await this.db.insert(this.table).values(data as any).returning();
+    const [created] = await this.db.insert(this.table as any).values(data as any).returning();
     return created;
   }
 
   async update(id: string, data: TUpdate) {
     const [updated] = await this.db
-      .update(this.table)
+      .update(this.table as any)
       .set({ ...(data as any), updatedAt: new Date() })
       .where(eq((this.table as any).id, id))
       .returning();
@@ -62,7 +63,7 @@ export abstract class BaseService<TTable extends Record<string, any>, TNew, TUpd
 
   async remove(id: string) {
     const [deleted] = await this.db
-      .delete(this.table)
+      .delete(this.table as any)
       .where(eq((this.table as any).id, id))
       .returning();
     return deleted;

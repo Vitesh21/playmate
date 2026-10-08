@@ -88,7 +88,7 @@ export class ReviewsService {
         await tx
           .update(products)
           .set({
-            averageRating: Math.round(Number(avg) * 10) / 10,
+            averageRating: String(Math.round(Number(avg) * 10) / 10),
             reviewCount: Number(cnt),
           })
           .where(eq(products.id, input.productId));

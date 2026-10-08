@@ -28,7 +28,10 @@ import {
   integer,
   boolean,
   jsonb,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { venues } from "./venues";
 import { sports } from "./sports";
 
@@ -80,10 +83,10 @@ export const venueEssentials = pgTable("venue_essentials", {
     .defaultNow()
     .notNull(),
 }, (table) => ({
-  venueNameUnique: { unique: true, columns: [table.venueId, table.name] },
-  stockNonNegative: { check: `stock_quantity >= 0` },
-  priceNonNegative: { check: `price >= 0` },
-  maxPerBookingPositive: { check: `max_per_booking >= 1` },
+  venueNameUnique: uniqueIndex("venue_essentials_venue_name_unique").on(table.venueId, table.name),
+  stockNonNegative: check("venue_essentials_stock_non_negative", sql`stock_quantity >= 0`),
+  priceNonNegative: check("venue_essentials_price_non_negative", sql`price >= 0`),
+  maxPerBookingPositive: check("venue_essentials_max_per_booking_positive", sql`max_per_booking >= 1`),
 }));
 
 export type VenueEssential = typeof venueEssentials.$inferSelect;

@@ -24,12 +24,12 @@ export class SupabaseService implements OnModuleInit {
    * Has unrestricted access to Postgres (bypasses RLS) and full control
    * over storage buckets, Auth admin endpoints, etc.
    */
-  public admin: SupabaseClient;
+  public admin!: SupabaseClient;
   /**
    * Shorthand reference to this.admin.storage — used for bucket ops.
    * Exposed for convenience so callers don't have to write .admin.storage.
    */
-  public storage: SupabaseClient["storage"];
+  public storage!: SupabaseClient["storage"];
 
   /**
    * Nest lifecycle: called once after the module is instantiated and DI

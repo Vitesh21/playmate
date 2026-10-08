@@ -23,7 +23,10 @@ import {
   uuid,
   integer,
   text,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { bookings } from "./bookings";
 import { venueEssentials } from "./venue-essentials";
 
@@ -61,16 +64,17 @@ export const bookingEssentials = pgTable("booking_essentials", {
     .defaultNow()
     .notNull(),
 }, (table) => ({
-  bookingEssentialUnique: {
-    unique: true,
-    columns: [table.bookingId, table.venueEssentialId],
-  },
-  quantityPositive: { check: `quantity > 0` },
-  durationNonNegative: {
-    check: `duration_hours IS NULL OR duration_hours > 0`,
-  },
-  unitPriceNonNegative: { check: `unit_price_snapshot >= 0` },
-  lineTotalNonNegative: { check: `line_total >= 0` },
+  bookingEssentialUnique: uniqueIndex("booking_essentials_unique").on(
+    table.bookingId,
+    table.venueEssentialId,
+  ),
+  quantityPositive: check("booking_essential_qty_positive", sql`quantity > 0`),
+  durationNonNegative: check(
+    "booking_essential_duration",
+    sql`duration_hours IS NULL OR duration_hours > 0`,
+  ),
+  unitPriceNonNegative: check("booking_essential_unit_price", sql`unit_price_snapshot >= 0`),
+  lineTotalNonNegative: check("booking_essential_line_total", sql`line_total >= 0`),
 }));
 
 export type BookingEssential = typeof bookingEssentials.$inferSelect;
