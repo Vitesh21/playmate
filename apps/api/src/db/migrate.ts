@@ -1,8 +1,12 @@
-import "dotenv/config";
+import * as path from "path";
+import { config as loadDotenv } from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { getConfig } from "@playmate/config";
+
+loadDotenv({ path: path.resolve(__dirname, "../../../../.env") });
+loadDotenv({ path: path.resolve(__dirname, "../../.env") });
 
 async function runMigrations() {
   const config = getConfig();

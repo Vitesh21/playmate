@@ -13,7 +13,10 @@
     "db:generate": "turbo db:generate",
     "db:push": "turbo db:push",
     "db:migrate": "turbo db:migrate",
-    "db:studio": "turbo db:studio"
+    "db:studio": "turbo db:studio",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres"
   },
   "devDependencies": {
     "@playmate/types": "workspace:*",

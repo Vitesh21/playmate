@@ -11,7 +11,7 @@
 | Layer | Technology | Why |
 |---|---|---|
 | **Database** | **PostgreSQL 15+** on **Supabase** (Managed, with PostGIS later for "near me") | ACID compliance, PostGIS for GIS search, Supabase Storage for images, Pooler for Serverless cold-starts |
-| **ORM + SQL migrations** | **Drizzle ORM** (TypeScript SQL builder) with `drizzle-kit generate:pg` | Zero magic, colocated TypeScript types, fastest Node.js ORM — see [apps/api/src/db/schema](apps/api/src/db/schema) |
+| **ORM + SQL migrations** | **Drizzle ORM** (TypeScript SQL builder) with `drizzle-kit generate` | Zero magic, colocated TypeScript types, fastest Node.js ORM — see [apps/api/src/db/schema](apps/api/src/db/schema) |
 | **Auth — Authentication** | **Supabase Auth** (JWT + RLS) | Email/password, Magic-link OTP, Phone OTP, Google OAuth, Apple OAuth — same JWT consumed by both API and Mobile |
 | **Auth — Authorization** | RBAC via `user_role` enum on `users` table: `USER` · `VENUE_OWNER` · `SELLER` · `ADMIN` + route-level `AuthGuard` (NestJS) + **Postgres RLS policies** per row | Single source of truth at DB layer, service-role key only inside NestJS trusted backend |
 | **API Backend** | **NestJS 10 + Express** · DTO validation via `nestjs-zod` + `@playmate/validation` shared schemas | Modular services (bookings, venues, payments, venue-essentials, on-demand-orders, carts, products) |
@@ -150,35 +150,85 @@ PostgreSQL on Supabase. All tables use `UUID` primary keys + `created_at` / `upd
 
 ### Prerequisites
 - Node 18.17+, **pnpm 9**
-- Java 17 (for Android Emulator if running the app locally), or Expo Go app on your phone
-- Supabase local or cloud project
+- Docker with the Compose plugin
+- Supabase project credentials for authentication and storage
+
+### 1. Install dependencies
+
+Run this once from the repository root. pnpm installs all workspace packages and links the local `@playmate/*` packages:
 
 ```bash
-# 1. Install (hoisted)
 pnpm install
-
-# 2. Fill env vars
-cp .env.example .env
-# — paste your Supabase project URL + anon/service-role keys
-# — paste Razorpay TEST-mode key_id + key_secret (NOT live)
-# — paste Resend API key (or any string for local; email send fails gracefully)
-
-# 3. Setup DB — Drizzle migrations
-cd apps/api
-pnpm db:generate       # generates SQL from schema TS under drizzle/
-pnpm db:migrate        # runs migrate.ts against DATABASE_URL
-
-# 4. Run the API
-pnpm --filter @playmate/api dev        # NestJS on http://localhost:3001
-# → /health should return { success:true }
-# → /api/docs for Swagger (nestjs/swagger) if enabled in main.ts bootstrap
-
-# 5. Run the Mobile app (Android)
-cd apps/mobile
-cp .env.example .env
-# → fill EXPO_PUBLIC_API_URL, EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY
-pnpm start             # then press 'a' → Android emulator; or scan QR in Expo Go on your device
 ```
+
+### 2. Configure the API
+
+```bash
+cp .env.example .env
+```
+
+Update the root `.env` with your Supabase values:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-or-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-secret-or-service-role-key
+```
+
+The service-role/secret key is backend-only. Never put it in the mobile app or commit `.env`. Razorpay should use test keys for local development. `RESEND_API_KEY` may be a placeholder until email is configured.
+
+### 3. Start local PostgreSQL
+
+The included [docker-compose.yml](docker-compose.yml) starts PostgreSQL on `localhost:54322`, matching `.env.example`:
+
+```bash
+pnpm db:up
+pnpm db:generate
+pnpm db:migrate
+```
+
+Useful database commands:
+
+```bash
+pnpm db:logs
+pnpm db:down
+```
+
+This Docker service provides PostgreSQL only. Supabase Auth and Storage still use the configured Supabase project.
+
+### 4. Run the API
+
+Keep the database running, then start the API in another terminal:
+
+```bash
+pnpm --filter @playmate/api dev
+```
+
+The API listens on `http://localhost:3001` because `API_PORT=3001` is set in `.env`.
+
+Verify it:
+
+```bash
+curl http://localhost:3001/api/health
+```
+
+Development API documentation is available at [http://localhost:3001/docs](http://localhost:3001/docs). Swagger is disabled when `NODE_ENV=production`.
+
+### 5. Run the mobile app later
+
+The mobile app uses Expo, not React Native CLI:
+
+```bash
+cp apps/mobile/.env.example apps/mobile/.env
+```
+
+For an Android emulator, set `EXPO_PUBLIC_API_URL=http://10.0.2.2:3001` in `apps/mobile/.env`, then run:
+
+```bash
+pnpm --filter @playmate/mobile start
+```
+
+Press `a` to open the Android emulator, or scan the QR code with Expo Go.
 
 ### Scripts (from repo root)
 ```bash
