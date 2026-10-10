@@ -1,4 +1,4 @@
-import { ValidationPipe } from "@nestjs/common";
+import { ZodValidationPipe } from "nestjs-zod";
 import { Test } from "@nestjs/testing";
 import type { TestingModule } from "@nestjs/testing";
 import { AppModule } from "@/app.module";
@@ -9,12 +9,7 @@ export async function createTestApp() {
   }).compile();
 
   const app = moduleFixture.createNestApplication();
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-    }),
-  );
+  app.useGlobalPipes(new ZodValidationPipe());
   await app.init();
   return app;
 }

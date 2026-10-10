@@ -60,7 +60,7 @@ export const venueCreateSchema = z.object({
 export const venueUpdateSchema = venueCreateSchema.partial();
 
 export const venueSearchSchema = z.object({
-  sportId: z.string().uuid().optional(),
+  sportId: z.string().optional(),
   city: z.string().optional(),
   minPrice: z.coerce.number().optional(),
   maxPrice: z.coerce.number().optional(),

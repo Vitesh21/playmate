@@ -209,7 +209,7 @@ The API listens on `http://localhost:3001` because `API_PORT=3001` is set in `.e
 Verify it:
 
 ```bash
-curl http://localhost:3001/api/health
+curl http://localhost:3001/health
 ```
 
 Development API documentation is available at [http://localhost:3001/docs](http://localhost:3001/docs). Swagger is disabled when `NODE_ENV=production`.

@@ -44,7 +44,7 @@ export class SupabaseService implements OnModuleInit {
 
     // Node 18 lacks native WebSocket; provide stub so createClient succeeds
     if (typeof (globalThis as any).WebSocket === "undefined") {
-      (globalThis as any).WebSocket = class MockWebSocket {};
+      (globalThis as any).WebSocket = class MockWebSocket { };
     }
 
     this.admin = createClient(config.NEXT_PUBLIC_SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, {

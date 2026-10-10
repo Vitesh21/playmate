@@ -41,8 +41,9 @@ jest.mock("@/venue-essentials/venue-essentials.service", () => ({
 
 const VENUE_ID = "00000000-0000-0000-0000-0000000000a1";
 const SPORT_ID = "00000000-0000-0000-0000-0000000000b1";
+const ESSENTIAL_ID = "00000000-0000-0000-0000-0000000000e1";
 const ESSENTIAL = {
-  id: "e-1",
+  id: ESSENTIAL_ID,
   venueId: VENUE_ID,
   sportId: SPORT_ID,
   name: "Yonex Racket",
@@ -105,9 +106,9 @@ describe("Venue Essentials routes (e2e)", () => {
   describe("GET /venue-essentials/:id", () => {
     it("returns a single essential", async () => {
       mockFindById.mockResolvedValue(ESSENTIAL);
-      const res = await request(app.getHttpServer()).get("/venue-essentials/e-1");
+      const res = await request(app.getHttpServer()).get(`/venue-essentials/${ESSENTIAL.id}`);
       expect(res.status).toBe(200);
-      expect(res.body.data.id).toBe("e-1");
+      expect(res.body.data.id).toBe(ESSENTIAL.id);
     });
   });
 
@@ -215,7 +216,7 @@ describe("Venue Essentials routes (e2e)", () => {
         .post(`/venue-essentials/bookings/${BOOKING_ID}/attach`)
         .set(authBearer(VALID_USER))
         .send({
-          items: [{ venueEssentialId: "e-1", quantity: 0 }],
+          items: [{ venueEssentialId: ESSENTIAL.id, quantity: 0 }],
         });
       expect(res.status).toBeGreaterThanOrEqual(400);
     });

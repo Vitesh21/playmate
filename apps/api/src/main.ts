@@ -1,8 +1,9 @@
+import "reflect-metadata";
 import * as fs from "fs";
 import * as path from "path";
 import { NestFactory } from "@nestjs/core";
-import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { ZodValidationPipe, patchNestJsSwagger } from "nestjs-zod";
 import { AppModule } from "./app.module";
 import { getConfig } from "@playmate/config";
 
@@ -44,17 +45,10 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, { cors: true });
 
-  app.setGlobalPrefix("api");
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
+  app.useGlobalPipes(new ZodValidationPipe());
 
   if (config.NODE_ENV !== "production") {
+    patchNestJsSwagger();
     const swaggerConfig = new DocumentBuilder()
       .setTitle("Playmate API")
       .setDescription("Sports Platform API - Play & Shop")
@@ -62,7 +56,11 @@ async function bootstrap() {
       .addBearerAuth()
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup("docs", app, document);
+    SwaggerModule.setup("docs", app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+    });
   }
 
   // Redirect root GET / to /docs

@@ -89,7 +89,7 @@ describe("Sports routes (e2e)", () => {
     });
 
     it("creates and returns the new record", async () => {
-      mockCreate.mockResolvedValue({ ...SPORT, id: "s-new" });
+      mockCreate.mockResolvedValue({ ...SPORT, id: "s-new", name: "Tennis", slug: "tennis" });
       const res = await request(app.getHttpServer())
         .post("/sports")
         .send({ name: "Tennis", slug: "tennis" });

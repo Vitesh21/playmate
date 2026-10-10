@@ -88,7 +88,7 @@ export type User = {
 /**
  * RBAC roles.
  *  USER         → normal logged-in customer (default).
- *  ADMIN        → full access to /api/admin/* + every CRUD endpoint.
+ *  ADMIN        → full access to /admin/* + every CRUD endpoint.
  *  VENUE_OWNER  → can only CRUD their own venues + courts.
  *  SELLER       → can only CRUD their own products + inventory.
  */
