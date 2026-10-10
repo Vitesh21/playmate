@@ -4,6 +4,7 @@ import * as path from "path";
 import { NestFactory } from "@nestjs/core";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { ZodValidationPipe, patchNestJsSwagger } from "nestjs-zod";
+import { apiReference } from "@scalar/nestjs-api-reference";
 import { AppModule } from "./app.module";
 import { getConfig } from "@playmate/config";
 
@@ -56,11 +57,25 @@ async function bootstrap() {
       .addBearerAuth()
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup("docs", app, document, {
-      swaggerOptions: {
-        persistAuthorization: true,
+
+    // Serve raw OpenAPI JSON
+    app.getHttpAdapter().get("/openapi.json", (_req: any, res: any) => {
+      res.json(document);
+    });
+
+    // Scalar API Reference UI
+    const scalarDocs = apiReference({
+      content: document,
+      theme: "purple",
+      darkMode: true,
+      metaData: {
+        title: "Playmate API Documentation",
+        description: "Sports Platform API - Play & Shop",
       },
     });
+
+    app.use("/docs", scalarDocs);
+    app.use("/reference", scalarDocs);
   }
 
   // Redirect root GET / to /docs
