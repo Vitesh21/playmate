@@ -16,7 +16,9 @@ declare const process: {
 
 /**
  * Everything the apps MUST provide at runtime in .env (or Render/Vercel env panel).
- * Every field is validated: URLs parse as URLs, ports coerce to numbers, blanks throw.
+ * External secrets are relaxed for local development (placeholder/mock values are
+ * accepted so the API can boot); a separate `strictEnvSchema` is applied in
+ * production to enforce real credentials.
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -25,25 +27,52 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
   // Supabase Project. NEXT_PUBLIC_* vars ship to browser JS (safe).
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL is required"),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
+  // Relaxed for local dev: URL defaults to the local Supabase gateway.
+  NEXT_PUBLIC_SUPABASE_URL: z
+    .string()
+    .default("http://localhost:54321"),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().default("local-anon-key"),
   // Service role key: NEVER send to the browser — bypasses RLS. Used only in NestJS.
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().default("local-service-role-key"),
 
   // NestJS API server config
+  API_PORT: z.coerce.number().default(3001),
+  API_BASE_URL: z.string().default("http://localhost:3001"),
+  NEXT_PUBLIC_API_URL: z.string().default("http://localhost:3001"),
+
+  // Razorpay — use TEST-mode keys locally, swap to LIVE in production secret panel.
+  RAZORPAY_KEY_ID: z.string().default("rzp_test_local"),
+  RAZORPAY_KEY_SECRET: z.string().default("rzp_test_local_secret"),
+  NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().default("rzp_test_local"),
+
+  // Resend.com transactional email
+  RESEND_API_KEY: z.string().default("re_local"),
+
+  // Public site URL (used in email links, Razorpay callback URL building)
+  NEXT_PUBLIC_APP_URL: z.string().default("http://localhost:3000"),
+});
+
+/**
+ * Strict variant applied in production — enforces non-empty real credentials.
+ */
+const strictEnvSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL is required"),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
+
   API_PORT: z.coerce.number().default(3001),
   API_BASE_URL: z.string().url().default("http://localhost:3001"),
   NEXT_PUBLIC_API_URL: z.string().url().default("http://localhost:3001"),
 
-  // Razorpay — use TEST-mode keys locally, swap to LIVE in production secret panel.
   RAZORPAY_KEY_ID: z.string().min(1, "RAZORPAY_KEY_ID is required"),
   RAZORPAY_KEY_SECRET: z.string().min(1, "RAZORPAY_KEY_SECRET is required"),
   NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().min(1, "NEXT_PUBLIC_RAZORPAY_KEY_ID is required"),
 
-  // Resend.com transactional email
   RESEND_API_KEY: z.string().min(1, "RESEND_API_KEY is required"),
 
-  // Public site URL (used in email links, Razorpay callback URL building)
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
 });
 
@@ -69,7 +98,9 @@ export function getConfig(overrideEnv: Record<string, string | undefined> = {}):
     ...overrideEnv,
   };
 
-  const parsed = envSchema.safeParse(env);
+  const nodeEnv = env.NODE_ENV ?? "development";
+  const schema = nodeEnv === "production" ? strictEnvSchema : envSchema;
+  const parsed = schema.safeParse(env);
 
   if (!parsed.success) {
     const errors = parsed.error.issues

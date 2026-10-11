@@ -9,6 +9,7 @@ import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { useAuthStore } from '@store/auth.store';
 import { useTheme } from '@theme/index';
+import { LoginScreen, RegisterScreen, ForgotPasswordScreen } from '@features/auth';
 import type {
   AuthStackParamList,
   HomeStackParamList,
@@ -56,15 +57,9 @@ function AuthNavigator() {
   const opts = screenOptions();
   return (
     <AuthStack.Navigator screenOptions={opts}>
-      <AuthStack.Screen name="Login" options={{ title: 'Welcome Back' }}>
-        {() => <Placeholder title="Login Screen" />}
-      </AuthStack.Screen>
-      <AuthStack.Screen name="Register" options={{ title: 'Create Account' }}>
-        {() => <Placeholder title="Register Screen" />}
-      </AuthStack.Screen>
-      <AuthStack.Screen name="ForgotPassword" options={{ title: 'Reset Password' }}>
-        {() => <Placeholder title="Forgot Password Screen" />}
-      </AuthStack.Screen>
+      <AuthStack.Screen name="Login" component={LoginScreen} options={{ title: 'Welcome Back' }} />
+      <AuthStack.Screen name="Register" component={RegisterScreen} options={{ title: 'Create Account' }} />
+      <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: 'Reset Password' }} />
     </AuthStack.Navigator>
   );
 }

@@ -161,6 +161,8 @@ export class BookingsService {
         } satisfies NewBooking)
         .returning();
 
+      if (!booking) throw new Error("Failed to create booking");
+
       // Step 4: FLIP THE SLOT — mark it NOT available so other users
       // can't even see it as bookable anymore. Runs inside the same tx,
       // so a rollback here restores isAvailable=true.

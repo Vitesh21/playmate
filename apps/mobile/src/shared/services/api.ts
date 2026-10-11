@@ -1,11 +1,13 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-import * as SecureStore from 'expo-secure-store';
 import Toast from 'react-native-toast-message';
+import storage from '@shared/services/storage';
 import type { ApiError, ApiResponse } from '@playmate/types';
 
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
+// NOTE: token persisted via storage service (SecureStore on native,
+// localStorage on web) so API auth works across platforms.
 const TOKEN_KEY = 'auth_token';
 
 class ApiClient {
@@ -30,7 +32,7 @@ class ApiClient {
 
   private async handleRequest(config: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> {
     if (!this.token) {
-      this.token = await SecureStore.getItemAsync(TOKEN_KEY);
+      this.token = await storage.getItem(TOKEN_KEY);
     }
     if (this.token && config.headers) {
       config.headers.Authorization = `Bearer ${this.token}`;
@@ -69,12 +71,12 @@ class ApiClient {
 
   setToken(token: string) {
     this.token = token;
-    SecureStore.setItemAsync(TOKEN_KEY, token);
+    storage.setItem(TOKEN_KEY, token);
   }
 
   clearToken() {
     this.token = null;
-    SecureStore.deleteItemAsync(TOKEN_KEY);
+    storage.removeItem(TOKEN_KEY);
   }
 
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {

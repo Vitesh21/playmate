@@ -33,7 +33,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro"
     },
     "plugins": [
       "expo-secure-store",
@@ -41,9 +41,9 @@
     ],
     "extra": {
       "EXPO_PUBLIC_API_URL": "http://localhost:3001",
-      "EXPO_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
-      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key",
-      "EXPO_PUBLIC_RAZORPAY_KEY_ID": "your-razorpay-key"
+      "EXPO_PUBLIC_SUPABASE_URL": "https://yfzrxkbzllcwwebfcqqz.supabase.co",
+      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_Fgm5mXwRhYkeB-D9g_jxdA_tvoi3Gqb",
+      "EXPO_PUBLIC_RAZORPAY_KEY_ID": "rzp_test_local"
     }
   }
 }

@@ -4,7 +4,6 @@ import * as path from "path";
 import { NestFactory } from "@nestjs/core";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { ZodValidationPipe, patchNestJsSwagger } from "nestjs-zod";
-import { apiReference } from "@scalar/nestjs-api-reference";
 import { AppModule } from "./app.module";
 import { getConfig } from "@playmate/config";
 
@@ -63,19 +62,13 @@ async function bootstrap() {
       res.json(document);
     });
 
-    // Scalar API Reference UI
-    const scalarDocs = apiReference({
-      content: document,
-      theme: "purple",
-      darkMode: true,
-      metaData: {
-        title: "Playmate API Documentation",
-        description: "Sports Platform API - Play & Shop",
+    // Swagger UI (avoids the ESM-only Scalar reference that crashes Node 18 CJS)
+    SwaggerModule.setup("docs", app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
       },
+      customSiteTitle: "Playmate API Documentation",
     });
-
-    app.use("/docs", scalarDocs);
-    app.use("/reference", scalarDocs);
   }
 
   // Redirect root GET / to /docs

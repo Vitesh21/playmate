@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import apiClient from '@shared/services/api';
 import storage from '@shared/services/storage';
-import supabase from '@shared/services/supabase';
-import type { User, UserRole, ApiResponse } from '@playmate/types';
+import type { User, ApiResponse } from '@playmate/types';
+import { UserRole } from '@playmate/types';
 
 type AuthState = {
   user: User | null;
@@ -16,6 +16,37 @@ type AuthState = {
   updateProfile: (data: Partial<User>) => Promise<void>;
 };
 
+/**
+ * Minimal mapping from a Supabase-style user object (returned by /auth/signup,
+ * /auth/login and /auth/me) into the shared Playmate `User` type.
+ */
+function mapUser(src: any): User | null {
+  if (!src) return null;
+  const meta = src.user_metadata ?? {};
+  return {
+    id: src.id,
+    email: src.email ?? '',
+    firstName: src.firstName ?? meta?.firstName ?? null,
+    lastName: src.lastName ?? meta?.lastName ?? null,
+    phone: src.phone ?? meta?.phone ?? null,
+    avatarUrl: src.avatarUrl ?? src.avatar_url ?? meta?.avatarUrl ?? null,
+    role: (src.role as UserRole) ?? UserRole.USER,
+    createdAt: src.createdAt ?? src.created_at ?? new Date(),
+    updatedAt: src.updatedAt ?? src.updated_at ?? new Date(),
+  } as User;
+}
+
+async function runAndRestore(fn: () => Promise<void>) {
+  await fn();
+  // Refresh the stored user profile from /auth/me so the session is always in sync.
+  try {
+    const res = await apiClient.get<ApiResponse<{ user: any }>>('/auth/me');
+    return mapUser(res.data?.user);
+  } catch {
+    return null;
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   session: null,
@@ -25,24 +56,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (email: string, password: string) => {
     set({ isLoading: true });
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) throw error;
+      const res = await apiClient.post<ApiResponse<any>>('/auth/login', { email, password });
+      const token = res.data?.session?.access_token;
+      if (!token) throw new Error('No session returned from login');
 
-      const token = data.session?.access_token;
-      if (token) {
-        apiClient.setToken(token);
-        await storage.setAccessToken(token);
-      }
+      apiClient.setToken(token);
+      await storage.setAccessToken(token);
 
-      const profileRes = await apiClient.get<ApiResponse<User>>('/auth/profile');
-      const user = profileRes.data;
-
+      const user = mapUser(res.data?.user);
       if (user) {
         await storage.setUser(user);
-        set({ user, isAuthenticated: true });
+        set({ user, session: token, isAuthenticated: true });
       }
     } finally {
       set({ isLoading: false });
@@ -52,27 +76,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   register: async (email: string, password: string, firstName?: string, lastName?: string) => {
     set({ isLoading: true });
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const res = await apiClient.post<ApiResponse<any>>('/auth/signup', {
         email,
         password,
-        options: {
-          data: { firstName, lastName },
-        },
+        firstName,
+        lastName,
       });
-      if (error) throw error;
+      if (!res.success) throw new Error(res.error?.message || 'Sign up failed');
 
-      const token = data.session?.access_token;
-      if (token) {
-        apiClient.setToken(token);
-        await storage.setAccessToken(token);
-      }
+      // Server-side signUp returns a user but no session; log in to obtain one.
+      const loginRes = await apiClient.post<ApiResponse<any>>('/auth/login', { email, password });
+      const token = loginRes.data?.session?.access_token;
+      if (!token) throw new Error('No session returned after sign up');
 
-      const profileRes = await apiClient.get<ApiResponse<User>>('/auth/profile');
-      const user = profileRes.data;
+      apiClient.setToken(token);
+      await storage.setAccessToken(token);
 
+      const user = mapUser(loginRes.data?.user);
       if (user) {
         await storage.setUser(user);
-        set({ user, isAuthenticated: true });
+        set({ user, session: token, isAuthenticated: true });
       }
     } finally {
       set({ isLoading: false });
@@ -82,9 +105,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     set({ isLoading: true });
     try {
-      await supabase.auth.signOut();
+      const token = get().session ?? (await storage.getAccessToken());
       apiClient.clearToken();
       await storage.clearAuth();
+      // Best-effort server-side sign out; ignore failures (token already cleared locally).
+      if (token) {
+        try {
+          await apiClient.post('/auth/logout');
+        } catch {
+          /* ignore */
+        }
+      }
       set({ user: null, session: null, isAuthenticated: false });
     } finally {
       set({ isLoading: false });
@@ -103,18 +134,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-      if (session) {
-        apiClient.setToken(session.access_token);
-        await storage.setAccessToken(session.access_token);
-
-        const profileRes = await apiClient.get<ApiResponse<User>>('/auth/profile');
-        const user = profileRes.data;
-
+      if (token) {
+        apiClient.setToken(token);
+        const user = await runAndRestore(async () => {});
         if (user) {
           await storage.setUser(user);
-          set({ user, isAuthenticated: true });
+          set({ user, session: token, isAuthenticated: true });
+        } else {
+          await storage.clearAuth();
         }
       }
     } catch {
