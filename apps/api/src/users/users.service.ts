@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { users, type NewUser } from "@/db/schema/users";
 import type { UserUpdateInput } from "@playmate/validation";
+import { UserRole } from "@playmate/types";
 
 @Injectable()
 export class UsersService {
@@ -28,15 +29,36 @@ export class UsersService {
     return created;
   }
 
-  async upsertByAuth(authUser: { id: string; email?: string; user_metadata?: Record<string, any> }) {
+  async upsertByAuth(authUser: {
+    id: string;
+    email?: string;
+    user_metadata?: Record<string, any>;
+    app_metadata?: Record<string, any>;
+  }) {
+    const meta = authUser.user_metadata ?? {};
+    const appMeta = authUser.app_metadata ?? {};
+    const tokenRole = (appMeta.role as UserRole) ?? undefined;
+
     const existing = await this.findById(authUser.id).catch(() => null);
-    if (existing) return existing;
+    if (existing) {
+      // Keep the local role in sync with the token's authoritative role.
+      if (tokenRole && existing.role !== tokenRole) {
+        const [updated] = await this.db
+          .update(users)
+          .set({ role: tokenRole, updatedAt: new Date() })
+          .where(eq(users.id, authUser.id))
+          .returning();
+        return updated ?? existing;
+      }
+      return existing;
+    }
 
     const newUser: NewUser = {
       id: authUser.id,
       email: authUser.email ?? null,
-      firstName: authUser.user_metadata?.firstName ?? null,
-      lastName: authUser.user_metadata?.lastName ?? null,
+      firstName: meta.firstName ?? null,
+      lastName: meta.lastName ?? null,
+      role: (tokenRole ?? UserRole.USER) as any,
     };
     return this.create(newUser);
   }

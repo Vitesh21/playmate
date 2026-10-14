@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import Toast from 'react-native-toast-message';
 import storage from '@shared/services/storage';
-import type { ApiError, ApiResponse } from '@playmate/types';
+import type { ApiError } from '@playmate/types';
 
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
@@ -45,9 +45,14 @@ class ApiClient {
   }
 
   private handleError(error: any) {
-    const errorData = error.response?.data as ApiResponse<never>;
+    const errorData = error.response?.data as any;
+    const validationMessage = Array.isArray(errorData?.errors)
+      ? errorData.errors[0]?.message
+      : undefined;
     const message =
       errorData?.error?.message ||
+      errorData?.message ||
+      validationMessage ||
       error.message ||
       'Something went wrong. Please try again.';
 

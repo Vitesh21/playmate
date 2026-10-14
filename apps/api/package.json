@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
     "db:studio": "drizzle-kit studio",
     "test": "NODE_ENV=test jest --config jest.config.js --passWithNoTests",
     "test:watch": "NODE_ENV=test jest --config jest.config.js --watch --passWithNoTests",

@@ -30,4 +30,12 @@ export class AdminService {
       venues: { total: venues.total },
     };
   }
+
+  async getAllUsers() {
+    return this.usersService.findAll();
+  }
+
+  async getAllVenues() {
+    return this.venuesService.search({ page: 1, perPage: 100 });
+  }
 }

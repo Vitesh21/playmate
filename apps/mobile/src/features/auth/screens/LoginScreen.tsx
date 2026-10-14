@@ -91,6 +91,26 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
             onPress={() => navigation.navigate('Register')}
           />
         </View>
+
+        <View
+          style={[
+            styles.demo,
+            { borderColor: colors.border.light, backgroundColor: colors.background.secondary },
+          ]}
+        >
+          <Text style={[typography.caption, { color: colors.text.tertiary, fontWeight: '700' }]}>
+            DEMO ACCOUNTS · password: playmate123
+          </Text>
+          {[
+            ['admin@playmate.dev', 'Admin'],
+            ['owner@playmate.dev', 'Mediator'],
+            ['demo@playmate.dev', 'User'],
+          ].map(([email, label]) => (
+            <Text key={email} style={[typography.caption, { color: colors.text.secondary, marginTop: 4 }]}>
+              {label}: {email}
+            </Text>
+          ))}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -104,6 +124,12 @@ const styles = StyleSheet.create({
   links: {
     marginTop: 16,
     alignItems: 'center',
+  },
+  demo: {
+    marginTop: 24,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
   },
 });
 

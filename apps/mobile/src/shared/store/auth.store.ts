@@ -106,9 +106,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const token = get().session ?? (await storage.getAccessToken());
-      apiClient.clearToken();
-      await storage.clearAuth();
-      // Best-effort server-side sign out; ignore failures (token already cleared locally).
+      // Best-effort server-side sign out FIRST — the request needs the
+      // Authorization header, so the token must still be set at this point.
       if (token) {
         try {
           await apiClient.post('/auth/logout');
@@ -116,6 +115,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           /* ignore */
         }
       }
+      apiClient.clearToken();
+      await storage.clearAuth();
       set({ user: null, session: null, isAuthenticated: false });
     } finally {
       set({ isLoading: false });

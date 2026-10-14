@@ -1,7 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiParam } from "@nestjs/swagger";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiParam, ApiBearerAuth } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
 import { VenuesService } from "./venues.service";
+import { AuthGuard, RolesGuard } from "@/common/auth.guard";
+import { UserRole } from "@playmate/types";
 import {
   venueCreateSchema,
   venueUpdateSchema,
@@ -24,6 +26,15 @@ export class VenuesController {
     const search = venueSearchSchema.partial().parse(query);
     const page = paginationSchema.parse(query);
     const data = await this.venuesService.search({ ...search, ...page });
+    return { success: true, data };
+  }
+
+  @Get("mine")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List venues owned by the current user" })
+  async findMine(@Req() req: any) {
+    const data = await this.venuesService.findByOwner(req.user.id);
     return { success: true, data };
   }
 
@@ -52,15 +63,22 @@ export class VenuesController {
   }
 
   @Post()
-  @ApiOperation({ summary: "Create a new venue" })
-  async create(@Body() body: CreateVenueDto) {
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Create a new venue (VENUE_OWNER / ADMIN)" })
+  async create(@Req() req: any, @Body() body: CreateVenueDto) {
     const data = venueCreateSchema.parse(body);
-    const venue = await this.venuesService.create(data);
+    // VENUE_OWNERs always own what they create; ADMINs may assign an owner.
+    const ownerId =
+      req.user?.role === UserRole.ADMIN ? data.ownerId ?? req.user.id : req.user.id;
+    const venue = await this.venuesService.create({ ...data, ownerId } as any);
     return { success: true, data: venue };
   }
 
   @Patch(":id")
-  @ApiOperation({ summary: "Update venue details" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update venue details (VENUE_OWNER / ADMIN)" })
   @ApiParam({ name: "id", description: "Venue UUID" })
   async update(@Param("id") id: string, @Body() body: UpdateVenueDto) {
     const data = venueUpdateSchema.parse(body);
@@ -69,7 +87,9 @@ export class VenuesController {
   }
 
   @Delete(":id")
-  @ApiOperation({ summary: "Delete a venue" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete a venue (VENUE_OWNER / ADMIN)" })
   @ApiParam({ name: "id", description: "Venue UUID" })
   async remove(@Param("id") id: string) {
     await this.venuesService.remove(id);

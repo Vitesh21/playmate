@@ -90,4 +90,13 @@ export class VenuesService {
     await this.findById(venueId);
     return this.db.select().from(courts).where(eq(courts.venueId, venueId)).orderBy(courts.name);
   }
+
+  /** Venues owned by a specific user (VENUE_OWNER "my venues" view). */
+  async findByOwner(ownerId: string) {
+    return this.db
+      .select()
+      .from(venues)
+      .where(eq(venues.ownerId, ownerId))
+      .orderBy(desc(venues.createdAt));
+  }
 }

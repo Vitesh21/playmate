@@ -41,6 +41,10 @@
       "dependsOn": ["^build"],
       "cache": false
     },
+    "db:seed": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "db:studio": {
       "cache": false,
       "persistent": true

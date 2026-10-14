@@ -123,4 +123,42 @@ export function useCreateBooking() {
   });
 }
 
+/** Venues owned by the signed-in VENUE_OWNER (mediator) — GET /venues/mine. */
+export function useMyVenues(options?: Omit<UseQueryOptions<Venue[]>, 'queryKey' | 'queryFn'>) {
+  return useQuery<Venue[]>({
+    queryKey: [...VENUE_KEYS.all, 'mine'],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<Venue[]>>('/venues/mine');
+      return res.data ?? [];
+    },
+    ...options,
+  });
+}
+
+export type CreateVenuePayload = {
+  name: string;
+  slug: string;
+  description?: string | null;
+  sportId: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  phone?: string | null;
+};
+
+/** Create a venue — VENUE_OWNER / ADMIN only (POST /venues). */
+export function useCreateVenue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateVenuePayload) => {
+      const res = await apiClient.post<ApiResponse<Venue>, CreateVenuePayload>('/venues', data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: VENUE_KEYS.all });
+    },
+  });
+}
+
 export { VENUE_KEYS };

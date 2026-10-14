@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
 import { z } from "zod";
 import { AuthService } from "./auth.service";
+import { UsersService } from "@/users/users.service";
 import { AuthGuard } from "@/common/auth.guard";
 
 export const signupSchema = z.object({
@@ -27,17 +28,23 @@ export class ResetPasswordDto extends createZodDto(resetPasswordSchema) {}
 @ApiTags("Auth")
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Post("signup")
   @ApiOperation({ summary: "Register a new user" })
   async signup(@Body() body: SignupDto) {
     const data = signupSchema.parse(body);
-    const user = await this.authService.signUp(data.email, data.password, {
+    const created = await this.authService.signUp(data.email, data.password, {
       firstName: data.firstName,
       lastName: data.lastName,
     });
-    return { success: true, data: { user: user.user } };
+    // Mirror the Supabase identity into the local `users` table so the app
+    // has a profile row (role, names) to work with.
+    const appUser = await this.usersService.upsertByAuth(created.user as any);
+    return { success: true, data: { user: appUser } };
   }
 
   @Post("login")
@@ -46,7 +53,8 @@ export class AuthController {
   async login(@Body() body: LoginDto) {
     const data = loginSchema.parse(body);
     const res = await this.authService.signIn(data.email, data.password);
-    return { success: true, data: res };
+    const appUser = await this.usersService.upsertByAuth(res.user as any);
+    return { success: true, data: { user: appUser, session: res.session } };
   }
 
   @Post("logout")

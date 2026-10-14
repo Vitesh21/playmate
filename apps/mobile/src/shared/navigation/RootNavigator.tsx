@@ -10,12 +10,19 @@ import { Text, View, StyleSheet } from 'react-native';
 import { useAuthStore } from '@store/auth.store';
 import { useTheme } from '@theme/index';
 import { LoginScreen, RegisterScreen, ForgotPasswordScreen } from '@features/auth';
+import { HomeScreen } from '@features/home';
+import { ProfileScreen } from '@features/profile';
+import { AdminDashboardScreen } from '@features/admin';
+import { ManageVenuesScreen, CreateVenueScreen } from '@features/venues';
+import { UserRole } from '@playmate/types';
 import type {
   AuthStackParamList,
   HomeStackParamList,
   ShopStackParamList,
   BookingsStackParamList,
   ProfileStackParamList,
+  ManageStackParamList,
+  AdminStackParamList,
   RootTabParamList,
   RootStackParamList,
 } from './types';
@@ -25,6 +32,8 @@ const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 const ShopStack = createNativeStackNavigator<ShopStackParamList>();
 const BookingsStack = createNativeStackNavigator<BookingsStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
+const ManageStack = createNativeStackNavigator<ManageStackParamList>();
+const AdminStack = createNativeStackNavigator<AdminStackParamList>();
 const RootTab = createBottomTabNavigator<RootTabParamList>();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 
@@ -68,9 +77,7 @@ function HomeNavigator() {
   const opts = screenOptions();
   return (
     <HomeStack.Navigator screenOptions={opts}>
-      <HomeStack.Screen name="Home" options={{ title: 'Playmate' }}>
-        {() => <Placeholder title="Home Screen" />}
-      </HomeStack.Screen>
+      <HomeStack.Screen name="Home" component={HomeScreen} options={{ title: 'Playmate' }} />
       <HomeStack.Screen name="VenueDetail" options={{ title: 'Venue' }}>
         {() => <Placeholder title="Venue Detail" />}
       </HomeStack.Screen>
@@ -143,9 +150,7 @@ function ProfileNavigator() {
   const opts = screenOptions();
   return (
     <ProfileStack.Navigator screenOptions={opts}>
-      <ProfileStack.Screen name="ProfileHome" options={{ title: 'Profile' }}>
-        {() => <Placeholder title="Profile Home" />}
-      </ProfileStack.Screen>
+      <ProfileStack.Screen name="ProfileHome" component={ProfileScreen} options={{ title: 'Profile' }} />
       <ProfileStack.Screen name="EditProfile" options={{ title: 'Edit Profile' }}>
         {() => <Placeholder title="Edit Profile" />}
       </ProfileStack.Screen>
@@ -171,6 +176,37 @@ function ProfileNavigator() {
   );
 }
 
+function ManageNavigator() {
+  const opts = screenOptions();
+  return (
+    <ManageStack.Navigator screenOptions={opts}>
+      <ManageStack.Screen
+        name="ManageHome"
+        component={ManageVenuesScreen}
+        options={{ title: 'My Venues' }}
+      />
+      <ManageStack.Screen
+        name="CreateVenue"
+        component={CreateVenueScreen}
+        options={{ title: 'Post a Venue' }}
+      />
+    </ManageStack.Navigator>
+  );
+}
+
+function AdminNavigator() {
+  const opts = screenOptions();
+  return (
+    <AdminStack.Navigator screenOptions={opts}>
+      <AdminStack.Screen
+        name="AdminHome"
+        component={AdminDashboardScreen}
+        options={{ title: 'Admin' }}
+      />
+    </AdminStack.Navigator>
+  );
+}
+
 function TabLabel({ label, focused }: { label: string; focused: boolean }) {
   const { colors, spacing, typography } = useTheme();
   return (
@@ -191,6 +227,17 @@ function TabLabel({ label, focused }: { label: string; focused: boolean }) {
 
 function MainNavigator() {
   const { colors } = useTheme();
+  const role = useAuthStore((s) => s.user?.role) as UserRole | undefined;
+  const effectiveRole = role ?? UserRole.USER;
+
+  // Role-driven tab bar:
+  //   USER / SELLER → Play · Shop · Bookings · Profile
+  //   MEDIATOR      → Play · Manage · Bookings · Profile
+  //   ADMIN         → Play · Shop · Bookings · Manage · Admin · Profile
+  const showShop = effectiveRole === UserRole.USER || effectiveRole === UserRole.SELLER || effectiveRole === UserRole.ADMIN;
+  const showManage = effectiveRole === UserRole.VENUE_OWNER || effectiveRole === UserRole.ADMIN;
+  const showAdmin = effectiveRole === UserRole.ADMIN;
+
   return (
     <RootTab.Navigator
       screenOptions={{
@@ -215,13 +262,15 @@ function MainNavigator() {
           tabBarIcon: ({ focused }) => <TabLabel label="Play" focused={focused} />,
         }}
       />
-      <RootTab.Screen
-        name="ShopTab"
-        component={ShopNavigator}
-        options={{
-          tabBarIcon: ({ focused }) => <TabLabel label="Shop" focused={focused} />,
-        }}
-      />
+      {showShop ? (
+        <RootTab.Screen
+          name="ShopTab"
+          component={ShopNavigator}
+          options={{
+            tabBarIcon: ({ focused }) => <TabLabel label="Shop" focused={focused} />,
+          }}
+        />
+      ) : null}
       <RootTab.Screen
         name="BookingsTab"
         component={BookingsNavigator}
@@ -229,6 +278,24 @@ function MainNavigator() {
           tabBarIcon: ({ focused }) => <TabLabel label="Bookings" focused={focused} />,
         }}
       />
+      {showManage ? (
+        <RootTab.Screen
+          name="ManageTab"
+          component={ManageNavigator}
+          options={{
+            tabBarIcon: ({ focused }) => <TabLabel label="Manage" focused={focused} />,
+          }}
+        />
+      ) : null}
+      {showAdmin ? (
+        <RootTab.Screen
+          name="AdminTab"
+          component={AdminNavigator}
+          options={{
+            tabBarIcon: ({ focused }) => <TabLabel label="Admin" focused={focused} />,
+          }}
+        />
+      ) : null}
       <RootTab.Screen
         name="ProfileTab"
         component={ProfileNavigator}

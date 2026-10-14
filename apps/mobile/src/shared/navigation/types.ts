@@ -47,10 +47,21 @@ export type ProfileStackParamList = {
   Wallet: undefined;
 };
 
+export type ManageStackParamList = {
+  ManageHome: undefined;
+  CreateVenue: undefined;
+};
+
+export type AdminStackParamList = {
+  AdminHome: undefined;
+};
+
 export type RootTabParamList = {
   HomeTab: undefined;
   ShopTab: undefined;
   BookingsTab: undefined;
+  ManageTab: undefined;
+  AdminTab: undefined;
   ProfileTab: undefined;
 };
 
