@@ -1,62 +1,62 @@
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."essential_fulfillment_status" AS ENUM('PENDING', 'PREPARED', 'DELIVERED', 'RETURNED', 'CANCELLED');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."booking_status" AS ENUM('PENDING', 'CONFIRMED', 'EXPIRED', 'CANCELLED', 'REFUNDED');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."user_role" AS ENUM('USER', 'ADMIN', 'VENUE_OWNER', 'SELLER');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."essential_pricing_model" AS ENUM('PER_HOUR', 'PER_BOOKING', 'FIXED');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."essential_type" AS ENUM('RENT', 'SALE', 'ADDON');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."on_demand_order_status" AS ENUM('PENDING', 'PLACED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."order_status" AS ENUM('PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."payment_method" AS ENUM('RAZORPAY');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."payment_status" AS ENUM('PENDING', 'PAID', 'FAILED', 'REFUNDED');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  CREATE TYPE "public"."notification_type" AS ENUM('BOOKING_CONFIRMED', 'BOOKING_REMINDER', 'ORDER_CONFIRMED', 'ORDER_SHIPPED', 'ORDER_DELIVERED', 'PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'GENERAL');
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
 CREATE TABLE IF NOT EXISTS "booking_essentials" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -343,215 +343,215 @@ CREATE TABLE IF NOT EXISTS "notifications" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "booking_essentials" ADD CONSTRAINT "booking_essentials_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "booking_essentials" ADD CONSTRAINT "booking_essentials_venue_essential_id_venue_essentials_id_fk" FOREIGN KEY ("venue_essential_id") REFERENCES "public"."venue_essentials"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "bookings" ADD CONSTRAINT "bookings_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "bookings" ADD CONSTRAINT "bookings_court_slot_id_court_slots_id_fk" FOREIGN KEY ("court_slot_id") REFERENCES "public"."court_slots"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "bookings" ADD CONSTRAINT "bookings_payment_id_payments_id_fk" FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "cart_items" ADD CONSTRAINT "cart_items_cart_id_carts_id_fk" FOREIGN KEY ("cart_id") REFERENCES "public"."carts"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "cart_items" ADD CONSTRAINT "cart_items_variant_id_product_variants_id_fk" FOREIGN KEY ("variant_id") REFERENCES "public"."product_variants"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "carts" ADD CONSTRAINT "carts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "categories" ADD CONSTRAINT "categories_parent_id_categories_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."categories"("id") ON DELETE set null ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "court_slots" ADD CONSTRAINT "court_slots_court_id_courts_id_fk" FOREIGN KEY ("court_id") REFERENCES "public"."courts"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "courts" ADD CONSTRAINT "courts_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "venues" ADD CONSTRAINT "venues_sport_id_sports_id_fk" FOREIGN KEY ("sport_id") REFERENCES "public"."sports"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "venues" ADD CONSTRAINT "venues_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "venue_essentials" ADD CONSTRAINT "venue_essentials_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "venue_essentials" ADD CONSTRAINT "venue_essentials_sport_id_sports_id_fk" FOREIGN KEY ("sport_id") REFERENCES "public"."sports"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "on_demand_orders" ADD CONSTRAINT "on_demand_orders_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "on_demand_orders" ADD CONSTRAINT "on_demand_orders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "on_demand_orders" ADD CONSTRAINT "on_demand_orders_payment_id_payments_id_fk" FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "on_demand_order_items" ADD CONSTRAINT "on_demand_order_items_order_id_on_demand_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."on_demand_orders"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "on_demand_order_items" ADD CONSTRAINT "on_demand_order_items_venue_essential_id_venue_essentials_id_fk" FOREIGN KEY ("venue_essential_id") REFERENCES "public"."venue_essentials"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "products" ADD CONSTRAINT "products_category_id_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "products" ADD CONSTRAINT "products_seller_id_users_id_fk" FOREIGN KEY ("seller_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "product_variants" ADD CONSTRAINT "product_variants_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "inventory" ADD CONSTRAINT "inventory_variant_id_product_variants_id_fk" FOREIGN KEY ("variant_id") REFERENCES "public"."product_variants"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "order_items" ADD CONSTRAINT "order_items_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "order_items" ADD CONSTRAINT "order_items_variant_id_product_variants_id_fk" FOREIGN KEY ("variant_id") REFERENCES "public"."product_variants"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "orders" ADD CONSTRAINT "orders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "orders" ADD CONSTRAINT "orders_payment_id_payments_id_fk" FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "payments" ADD CONSTRAINT "payments_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "payments" ADD CONSTRAINT "payments_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "payments" ADD CONSTRAINT "payments_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "reviews" ADD CONSTRAINT "reviews_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "reviews" ADD CONSTRAINT "reviews_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "reviews" ADD CONSTRAINT "reviews_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
-DO $$ BEGIN
+DO $body$ BEGIN
  ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
-END $$;
+END $body$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "booking_essentials_unique" ON "booking_essentials" USING btree ("booking_id","venue_essential_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "court_slots_unique" ON "court_slots" USING btree ("court_id","date","start_time","end_time");
