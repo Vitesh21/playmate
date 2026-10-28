@@ -1,8 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiParam, ApiQuery } from "@nestjs/swagger";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiParam, ApiQuery, ApiBearerAuth } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
 import { z } from "zod";
 import { CourtsService } from "./courts.service";
+import { AuthGuard, RolesGuard } from "@/common/auth.guard";
+import { UserRole } from "@playmate/types";
 import {
   courtCreateSchema,
   courtUpdateSchema,
@@ -41,7 +43,9 @@ export class CourtsController {
   }
 
   @Post()
-  @ApiOperation({ summary: "Create a new court in a venue" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Create a new court in a venue (VENUE_OWNER / ADMIN)" })
   async create(@Body() body: CreateCourtDto) {
     const data = courtCreateSchema.parse(body);
     const court = await this.courtsService.create(data);
@@ -49,7 +53,9 @@ export class CourtsController {
   }
 
   @Post(":id/slots")
-  @ApiOperation({ summary: "Create a court booking slot" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Create a court booking slot (VENUE_OWNER / ADMIN)" })
   @ApiParam({ name: "id", description: "Court UUID" })
   async createSlot(@Body() body: CreateCourtSlotDto) {
     const data = courtSlotCreateSchema.parse(body);
@@ -58,7 +64,9 @@ export class CourtsController {
   }
 
   @Post(":id/slots/bulk")
-  @ApiOperation({ summary: "Bulk create court booking slots" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Bulk create court booking slots (VENUE_OWNER / ADMIN)" })
   @ApiParam({ name: "id", description: "Court UUID" })
   async bulkCreateSlots(@Param("id") courtId: string, @Body() body: BulkCreateCourtSlotsDto) {
     const slots = body.slots.map((s) => courtSlotCreateSchema.parse(s));
@@ -67,7 +75,9 @@ export class CourtsController {
   }
 
   @Patch(":id")
-  @ApiOperation({ summary: "Update court details" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update court details (VENUE_OWNER / ADMIN)" })
   @ApiParam({ name: "id", description: "Court UUID" })
   async update(@Param("id") id: string, @Body() body: UpdateCourtDto) {
     const data = courtUpdateSchema.parse(body);
@@ -76,7 +86,9 @@ export class CourtsController {
   }
 
   @Delete(":id")
-  @ApiOperation({ summary: "Delete a court" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete a court (VENUE_OWNER / ADMIN)" })
   @ApiParam({ name: "id", description: "Court UUID" })
   async remove(@Param("id") id: string) {
     await this.courtsService.remove(id);

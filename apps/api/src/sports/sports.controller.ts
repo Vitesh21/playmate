@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiParam, ApiQuery } from "@nestjs/swagger";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiParam, ApiBearerAuth } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
 import { z } from "zod";
 import { SportsService } from "./sports.service";
 import { sportCreateSchema, sportUpdateSchema, paginationSchema } from "@playmate/validation";
+import { AuthGuard, RolesGuard } from "@/common/auth.guard";
+import { UserRole } from "@playmate/types";
 
 export class CreateSportDto extends createZodDto(sportCreateSchema) {}
 export class UpdateSportDto extends createZodDto(sportUpdateSchema) {}
@@ -43,7 +45,9 @@ export class SportsController {
   }
 
   @Post()
-  @ApiOperation({ summary: "Create a new sport" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.ADMIN, UserRole.VENUE_OWNER]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Create a new sport (ADMIN / VENUE_OWNER)" })
   async create(@Body() body: CreateSportDto) {
     const data = sportCreateSchema.parse(body);
     const sport = await this.sportsService.create(data);
@@ -51,7 +55,9 @@ export class SportsController {
   }
 
   @Patch(":id")
-  @ApiOperation({ summary: "Update an existing sport" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update an existing sport (ADMIN)" })
   @ApiParam({ name: "id", description: "Sport UUID" })
   async update(@Param("id") id: string, @Body() body: UpdateSportDto) {
     const data = sportUpdateSchema.parse(body);
@@ -60,7 +66,9 @@ export class SportsController {
   }
 
   @Delete(":id")
-  @ApiOperation({ summary: "Delete a sport" })
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete a sport (ADMIN)" })
   @ApiParam({ name: "id", description: "Sport UUID" })
   async remove(@Param("id") id: string) {
     await this.sportsService.remove(id);
