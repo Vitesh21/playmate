@@ -30,7 +30,7 @@ ALTER TABLE on_demand_order_items      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products                   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_variants           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory                  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cart                       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE carts                      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders                     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments                   ENABLE ROW LEVEL SECURITY;
@@ -219,7 +219,7 @@ CREATE POLICY on_demand_order_items_scope ON on_demand_order_items
 -- 9. PRODUCTS / SELLERS — public read, seller owns write
 -- --------------------------------------------------------------
 CREATE POLICY products_select_public ON products
-  FOR SELECT USING (is_published = true);
+  FOR SELECT USING (is_active = true);
 
 CREATE POLICY products_insert_seller ON products
   FOR INSERT WITH CHECK (
