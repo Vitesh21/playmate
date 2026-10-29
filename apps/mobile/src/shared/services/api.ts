@@ -58,6 +58,11 @@ class ApiClient {
 
     if (error.response?.status === 401) {
       this.clearToken();
+      Toast.show({
+        type: 'error',
+        text1: 'Session Expired',
+        text2: 'Please sign in to book courts and access account features.',
+      });
     } else {
       Toast.show({
         type: 'error',
