@@ -50,6 +50,7 @@ export type ProfileStackParamList = {
 export type ManageStackParamList = {
   ManageHome: undefined;
   CreateVenue: undefined;
+  ManageSlots: { venueId: string; venueName?: string };
 };
 
 export type AdminStackParamList = {

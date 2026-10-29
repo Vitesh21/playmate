@@ -13,7 +13,7 @@ import { LoginScreen, RegisterScreen, ForgotPasswordScreen } from '@features/aut
 import { HomeScreen } from '@features/home';
 import { ProfileScreen } from '@features/profile';
 import { AdminDashboardScreen } from '@features/admin';
-import { ManageVenuesScreen, CreateVenueScreen } from '@features/venues';
+import { ManageVenuesScreen, CreateVenueScreen, ManageVenueSlotsScreen } from '@features/venues';
 import { UserRole } from '@playmate/types';
 import type {
   AuthStackParamList,
@@ -189,6 +189,11 @@ function ManageNavigator() {
         name="CreateVenue"
         component={CreateVenueScreen}
         options={{ title: 'Post a Venue' }}
+      />
+      <ManageStack.Screen
+        name="ManageSlots"
+        component={ManageVenueSlotsScreen}
+        options={{ title: 'Courts & Slots' }}
       />
     </ManageStack.Navigator>
   );

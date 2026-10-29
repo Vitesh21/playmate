@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@theme/index';
@@ -12,10 +12,10 @@ import type { Venue } from '@playmate/types';
 
 /**
  * "Manage" tab — the Mediator (VENUE_OWNER) / Admin view for posting and
- * managing own venues. Users never see this tab.
+ * managing own venues and their courts/slots.
  */
 export const ManageVenuesScreen: React.FC = () => {
-  const { colors, spacing, typography } = useTheme();
+  const { colors, spacing, typography, radius } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<ManageStackParamList>>();
   const user = useAuthStore((s) => s.user);
 
@@ -31,21 +31,40 @@ export const ManageVenuesScreen: React.FC = () => {
     title: { ...typography.h3, color: colors.text.primary, marginTop: spacing.xxs },
     subtitle: { ...typography.body2, color: colors.text.tertiary, marginTop: spacing.xxs },
     cta: { marginTop: spacing.lg },
-    row: { paddingHorizontal: spacing.lg },
+    row: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
     listContent: { paddingBottom: spacing.xxl },
     centered: { paddingTop: spacing.xxxxl },
+    manageRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: spacing.sm,
+      marginTop: -spacing.xs,
+      marginBottom: spacing.sm,
+    },
+    manageBtn: {
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      backgroundColor: colors.primary[50],
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.primary[200],
+    },
+    manageBtnText: {
+      ...typography.caption,
+      color: colors.primary[700],
+      fontWeight: '600',
+    },
   });
 
   const renderHeader = () => (
     <View style={s.header}>
       <Text style={s.kicker}>{roleLabel(user?.role).toUpperCase()} WORKSPACE</Text>
-      <Text style={s.title}>Your venues</Text>
+      <Text style={s.title}>Your Venues</Text>
       <Text style={s.subtitle}>
-        {venues.length} listing{venues.length === 1 ? '' : 's'} · publish new courts and manage your
-        pro shop
+        {venues.length} venue listing{venues.length === 1 ? '' : 's'} in database · manage courts, slot timings and pricing
       </Text>
       <Button
-        title="+  Post a new venue"
+        title="+  Post a New Venue"
         variant="primary"
         size="lg"
         fullWidth
@@ -56,7 +75,7 @@ export const ManageVenuesScreen: React.FC = () => {
   );
 
   const renderEmpty = () => {
-    if (venuesQuery.isLoading) return <LoadingState label="Loading your venues…" style={s.centered} />;
+    if (venuesQuery.isLoading) return <LoadingState label="Loading your venues from database…" style={s.centered} />;
     if (venuesQuery.isError) {
       return (
         <ErrorState
@@ -92,7 +111,25 @@ export const ManageVenuesScreen: React.FC = () => {
       contentContainerStyle={s.listContent}
       renderItem={({ item }) => (
         <View style={s.row}>
-          <VenueCard venue={item} sportName={sportNameById.get(item.sportId)} />
+          <VenueCard
+            venue={item}
+            sportName={sportNameById.get(item.sportId)}
+            onPress={() => (navigation as any).navigate('ManageSlots', {
+              venueId: item.id,
+              venueName: item.name,
+            })}
+          />
+          <View style={s.manageRow}>
+            <TouchableOpacity
+              style={s.manageBtn}
+              onPress={() => (navigation as any).navigate('ManageSlots', {
+                venueId: item.id,
+                venueName: item.name,
+              })}
+            >
+              <Text style={s.manageBtnText}>⚙️ Manage Courts & Slots</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
       refreshControl={

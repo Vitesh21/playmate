@@ -75,11 +75,10 @@ export function useVenueCourts(
   return useQuery<Court[]>({
     queryKey: VENUE_KEYS.courts(venueId),
     queryFn: async () => {
-      const res = await apiClient.get<ApiResponse<PaginatedResponse<Court>>>(
-        `/courts/venue/${venueId}`,
-        { params: { perPage: 100 } }
+      const res = await apiClient.get<ApiResponse<Court[]>>(
+        `/venues/${venueId}/courts`
       );
-      return res.data?.items ?? [];
+      return res.data ?? [];
     },
     staleTime: 2 * 60 * 1000,
     enabled: !!venueId,
@@ -89,19 +88,19 @@ export function useVenueCourts(
 
 export function useCourtSlots(
   courtId: string,
-  date: string,
+  date?: string,
   options?: Omit<UseQueryOptions<CourtSlot[]>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery<CourtSlot[]>({
-    queryKey: VENUE_KEYS.slots(courtId, date),
+    queryKey: [...VENUE_KEYS.all, 'slots', courtId, date ?? 'all'],
     queryFn: async () => {
-      const res = await apiClient.get<ApiResponse<CourtSlot[]>>(`/court-slots/court/${courtId}`, {
-        params: { date },
+      const res = await apiClient.get<ApiResponse<CourtSlot[]>>(`/courts/${courtId}/slots`, {
+        params: date ? { date } : undefined,
       });
       return res.data ?? [];
     },
     staleTime: 30 * 1000,
-    enabled: !!courtId && !!date,
+    enabled: !!courtId,
     ...options,
   });
 }
@@ -145,6 +144,8 @@ export type CreateVenuePayload = {
   state: string;
   pincode: string;
   phone?: string | null;
+  images?: string[];
+  amenities?: string[];
 };
 
 /** Create a venue — VENUE_OWNER / ADMIN only (POST /venues). */
@@ -157,6 +158,56 @@ export function useCreateVenue() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: VENUE_KEYS.all });
+    },
+  });
+}
+
+export type CreateCourtPayload = {
+  venueId: string;
+  name: string;
+  type?: string;
+  surface?: string;
+  hourlyRate: number;
+  images?: string[];
+};
+
+export function useCreateCourt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateCourtPayload) => {
+      const res = await apiClient.post<ApiResponse<Court>, CreateCourtPayload>('/courts', data);
+      return res.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: VENUE_KEYS.courts(variables.venueId) });
+    },
+  });
+}
+
+export type BulkCreateSlotsPayload = {
+  courtId: string;
+  slots: Array<{
+    courtId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    price: number;
+    isAvailable?: boolean;
+  }>;
+};
+
+export function useBulkCreateSlots() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ courtId, slots }: BulkCreateSlotsPayload) => {
+      const res = await apiClient.post<ApiResponse<CourtSlot[]>, { slots: BulkCreateSlotsPayload['slots'] }>(
+        `/courts/${courtId}/slots/bulk`,
+        { slots }
+      );
+      return res.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...VENUE_KEYS.all, 'slots'] });
     },
   });
 }
