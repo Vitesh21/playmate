@@ -60,11 +60,12 @@ export const VenueDetailScreen: React.FC = () => {
     }
 
     try {
-      const res = await bookingMutation.mutateAsync({ courtSlotId: selectedSlotId });
+      const res: any = await bookingMutation.mutateAsync({ courtSlotId: selectedSlotId });
+      const bookingId = res?.booking?.id || res?.bookingId || 'Confirmed';
       Toast.show({
         type: 'success',
-        text1: 'Slot Booked Successfully!',
-        text2: `Booking ID: ${res?.bookingId?.slice(0, 8) ?? 'Confirmed'} · Pending confirmation`,
+        text1: 'Slot Reserved!',
+        text2: `Booking #${bookingId.slice(0, 8)} · Ready for payment`,
       });
       // Refresh slots
       slotsQuery.refetch();
@@ -73,7 +74,7 @@ export const VenueDetailScreen: React.FC = () => {
       Toast.show({
         type: 'error',
         text1: 'Booking failed',
-        text2: err?.message || 'Unable to book court slot',
+        text2: err?.response?.data?.message || err?.message || 'Unable to book court slot',
       });
     }
   };
