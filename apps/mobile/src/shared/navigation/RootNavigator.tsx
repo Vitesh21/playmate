@@ -13,7 +13,7 @@ import { LoginScreen, RegisterScreen, ForgotPasswordScreen } from '@features/aut
 import { HomeScreen } from '@features/home';
 import { ProfileScreen } from '@features/profile';
 import { AdminDashboardScreen } from '@features/admin';
-import { ManageVenuesScreen, CreateVenueScreen, ManageVenueSlotsScreen } from '@features/venues';
+import { ManageVenuesScreen, CreateVenueScreen, ManageVenueSlotsScreen, VenueDetailScreen } from '@features/venues';
 import { UserRole } from '@playmate/types';
 import type {
   AuthStackParamList,
@@ -78,9 +78,11 @@ function HomeNavigator() {
   return (
     <HomeStack.Navigator screenOptions={opts}>
       <HomeStack.Screen name="Home" component={HomeScreen} options={{ title: 'Playmate' }} />
-      <HomeStack.Screen name="VenueDetail" options={{ title: 'Venue' }}>
-        {() => <Placeholder title="Venue Detail" />}
-      </HomeStack.Screen>
+      <HomeStack.Screen
+        name="VenueDetail"
+        component={VenueDetailScreen}
+        options={{ title: 'Venue Details' }}
+      />
       <HomeStack.Screen name="CourtDetail" options={{ title: 'Court' }}>
         {() => <Placeholder title="Court Detail" />}
       </HomeStack.Screen>
