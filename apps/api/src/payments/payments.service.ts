@@ -1,4 +1,12 @@
-import { Inject, Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  GoneException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { eq, inArray } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { payments } from "@/db/schema/payments";
@@ -37,6 +45,16 @@ export class PaymentsService {
     const payment = await this.findById(paymentId);
     const config = getConfig();
 
+    if (payment.bookingId) {
+      const booking = await this.bookingsService.findById(payment.bookingId);
+      if (
+        booking.status !== "PENDING" ||
+        (booking.expiresAt && booking.expiresAt <= new Date())
+      ) {
+        throw new GoneException("This booking's payment window has expired");
+      }
+    }
+
     return {
       payment,
       keyId: config.NEXT_PUBLIC_RAZORPAY_KEY_ID || config.RAZORPAY_KEY_ID,
@@ -64,8 +82,15 @@ export class PaymentsService {
     if (payment.status === "PAID") {
       return this.resolveLinkedEntities(payment);
     }
+    if (payment.status === "REFUNDED") {
+      throw new ConflictException("This payment has already been refunded");
+    }
 
+    const config = getConfig();
     const isMockCheckout = this.isMockTransaction(input.transactionId);
+    if (isMockCheckout && (config.NODE_ENV === "production" || !config.ALLOW_MOCK_PAYMENTS)) {
+      throw new BadRequestException("Mock payment verification is disabled");
+    }
     if (!isMockCheckout) {
       if (!input.signature) {
         throw new BadRequestException("Missing Razorpay signature");
@@ -80,26 +105,88 @@ export class PaymentsService {
       if (!isValid) {
         throw new BadRequestException("Invalid payment signature");
       }
+
+      let gatewayPayment = await this.razorpay.fetchPayment(input.paymentId);
+      const expectedAmount = payment.amount * 100;
+      if (
+        gatewayPayment.order_id !== input.transactionId ||
+        gatewayPayment.amount !== expectedAmount ||
+        gatewayPayment.currency !== "INR"
+      ) {
+        throw new BadRequestException("Payment does not match this booking amount");
+      }
+
+      if (gatewayPayment.status === "authorized") {
+        gatewayPayment = await this.razorpay.capturePayment(input.paymentId, expectedAmount);
+      }
+      if (gatewayPayment.status !== "captured") {
+        throw new BadRequestException("Payment has not been captured yet");
+      }
+    }
+
+    const gatewayResponse = {
+      verifiedVia: isMockCheckout ? "mock-checkout" : "razorpay-signature",
+      razorpayPaymentId: input.paymentId,
+      razorpaySignature: input.signature ?? null,
+    };
+
+    let linkedEntities: Awaited<ReturnType<PaymentsService["resolveLinkedEntities"]>>;
+    try {
+      linkedEntities = await this.resolveLinkedEntities({
+        ...payment,
+        status: "PAID",
+        gatewayResponse,
+      });
+    } catch (error) {
+      if (isMockCheckout) throw error;
+
+      let refund: unknown;
+      try {
+        refund = await this.razorpay.refundPayment(input.paymentId, payment.amount * 100);
+      } catch (refundError) {
+        await this.db
+          .update(payments)
+          .set({
+            status: "PAID" as PaymentStatus,
+            gatewayResponse: {
+              ...gatewayResponse,
+              refundFailure:
+                refundError instanceof Error ? refundError.message : "Refund failed",
+              reconciliationRequired: true,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(payments.id, payment.id));
+        throw new ServiceUnavailableException(
+          "Payment was captured but the booking could not be confirmed or refunded automatically. Support review is required.",
+        );
+      }
+
+      await this.db
+        .update(payments)
+        .set({
+          status: "REFUNDED" as PaymentStatus,
+          gatewayResponse: { ...gatewayResponse, refund },
+          updatedAt: new Date(),
+        })
+        .where(eq(payments.id, payment.id));
+      throw new ConflictException("Payment arrived after the slot hold expired. A refund has been initiated.");
     }
 
     const [updatedPayment] = await this.db
       .update(payments)
       .set({
         status: "PAID" as PaymentStatus,
-        gatewayResponse: {
-          verifiedVia: isMockCheckout ? "mock-checkout" : "razorpay-signature",
-          razorpayPaymentId: input.paymentId,
-          razorpaySignature: input.signature ?? null,
-        },
+        gatewayResponse,
         updatedAt: new Date(),
       })
       .where(eq(payments.id, payment.id))
       .returning();
 
-    return this.resolveLinkedEntities(updatedPayment ?? payment);
+    return { ...linkedEntities, payment: updatedPayment ?? linkedEntities.payment };
   }
 
-  async handleRazorpayWebhook(rawBody: string, signature: string, payload: any) {
+  async handleRazorpayWebhook(rawBody: string | Buffer, signature: string, payload: any) {
     const valid = await this.razorpay.verifyWebhookSignature(rawBody, signature);
     if (!valid) throw new BadRequestException("Invalid webhook signature");
 
@@ -120,23 +207,68 @@ export class PaymentsService {
       .limit(1);
 
     if (!payment) return { success: true, message: "Payment not found" };
+    if (payment.status === "REFUNDED") {
+      return { success: true, status: "REFUNDED", message: "Payment was already refunded" };
+    }
 
-    if (event === "payment.captured" || event === "order.paid") {
+    const isCapturedPayment = event === "payment.captured" &&
+      entity.order_id === payment.transactionId &&
+      entity.amount === payment.amount * 100 &&
+      entity.currency === "INR";
+    const isPaidOrder = event === "order.paid" &&
+      entity.id === payment.transactionId &&
+      entity.amount_paid === payment.amount * 100 &&
+      entity.currency === "INR";
+
+    if (isCapturedPayment || isPaidOrder) {
+      try {
+        await this.resolveLinkedEntities({
+          ...payment,
+          status: "PAID",
+          gatewayResponse: payload.payload,
+        });
+      } catch (error) {
+        let paymentId: string | undefined = event === "payment.captured" ? entity.id : undefined;
+        if (!paymentId && event === "order.paid") {
+          const orderPayments = await this.razorpay.fetchPaymentsForOrder(payment.transactionId!);
+          paymentId = orderPayments.items.find(
+            (item) => item.status === "captured" && item.amount === payment.amount * 100,
+          )?.id;
+        }
+        if (!paymentId) throw error;
+        try {
+          const refund = await this.razorpay.refundPayment(paymentId, payment.amount * 100);
+          await this.db
+            .update(payments)
+            .set({
+              status: "REFUNDED" as PaymentStatus,
+              gatewayResponse: { ...payload.payload, refund },
+              updatedAt: new Date(),
+            })
+            .where(eq(payments.id, payment.id));
+          return { success: true, status: "REFUNDED" };
+        } catch (refundError) {
+          await this.db
+            .update(payments)
+            .set({
+              status: "PAID" as PaymentStatus,
+              gatewayResponse: {
+                ...payload.payload,
+                refundFailure:
+                  refundError instanceof Error ? refundError.message : "Refund failed",
+                reconciliationRequired: true,
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(payments.id, payment.id));
+          throw refundError;
+        }
+      }
+
       await this.db
         .update(payments)
-        .set({
-          status: "PAID" as PaymentStatus,
-          gatewayResponse: payload.payload,
-          updatedAt: new Date(),
-        })
+        .set({ status: "PAID" as PaymentStatus, gatewayResponse: payload.payload, updatedAt: new Date() })
         .where(eq(payments.id, payment.id));
-
-      if (payment.bookingId) {
-        await this.bookingsService.confirm(payment.bookingId);
-      }
-      if (payment.orderId) {
-        await this.ordersService.confirm(payment.orderId);
-      }
 
       return { success: true, status: "PAID" };
     }

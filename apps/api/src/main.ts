@@ -43,7 +43,7 @@ loadEnv();
 async function bootstrap() {
   const config = getConfig();
 
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule, { cors: true, rawBody: true });
 
   app.useGlobalPipes(new ZodValidationPipe());
 

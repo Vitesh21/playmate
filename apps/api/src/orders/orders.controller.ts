@@ -57,15 +57,6 @@ export class OrdersController {
     return { success: true, data: result };
   }
 
-  @Post(":id/confirm")
-  @UseGuards(AuthGuard)
-  @ApiOperation({ summary: "Confirm order after payment" })
-  @ApiParam({ name: "id", description: "Order UUID" })
-  async confirm(@Param("id") id: string) {
-    const data = await this.ordersService.confirm(id);
-    return { success: true, data };
-  }
-
   @Patch(":id/status")
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: "Update order status" })

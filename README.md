@@ -216,19 +216,19 @@ Development API documentation is available at [http://localhost:3001/docs](http:
 
 ### 5. Run the mobile app later
 
-The mobile app uses Expo, not React Native CLI:
+The mobile app uses Expo SDK 54, compatible with the Expo Go release available on iOS and Android:
 
 ```bash
 cp apps/mobile/.env.example apps/mobile/.env
 ```
 
-For an Android emulator, set `EXPO_PUBLIC_API_URL=http://10.0.2.2:3001` in `apps/mobile/.env`, then run:
+For an Android emulator, set `EXPO_PUBLIC_API_URL=http://10.0.2.2:3001` in `apps/mobile/.env`. For a physical phone, use your computer's LAN IP instead of `localhost` (both devices must be on the same Wi-Fi). Start the local database and API first, then run:
 
 ```bash
 pnpm --filter @playmate/mobile start
 ```
 
-Press `a` to open the Android emulator, or scan the QR code with Expo Go.
+Scan the QR code with Expo Go. In local development, `ALLOW_MOCK_PAYMENTS=true` enables a clearly marked mock checkout so the booking lifecycle can be tested without Razorpay credentials. Keep it disabled in production. For real payments, set Razorpay test keys and the separate webhook signing secret.
 
 ### Scripts (from repo root)
 ```bash
