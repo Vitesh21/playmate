@@ -2,6 +2,7 @@ import apiClient from './api';
 import type { Booking, Order, Payment, ApiResponse } from '@playmate/types';
 
 const RAZORPAY_KEY = process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID || '';
+const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 
 type CreateBookingPaymentInput = {
   bookingId: string;
@@ -40,6 +41,10 @@ class PaymentService {
       ApiResponse<{ payment: Payment; booking?: Booking; order?: Order }>,
       { transactionId: string; paymentId: string }
     >('/payments/verify', { transactionId, paymentId });
+  }
+
+  getHostedCheckoutUrl(paymentId: string): string {
+    return `${API_BASE_URL}/payments/checkout/${paymentId}`;
   }
 
   getRazorpayKey(): string {
