@@ -1,7 +1,3 @@
-git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
-git: error: couldn't create cache file '/tmp/xcrun_db-GDl6q4iO' (errno=Operation not permitted)
-git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
-git: error: couldn't create cache file '/tmp/xcrun_db-UWh2Q3sU' (errno=Operation not permitted)
 /**
  * Bookings Service — Court slot reservation state machine.
  *

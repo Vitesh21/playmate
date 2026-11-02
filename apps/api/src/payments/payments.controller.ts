@@ -1,7 +1,3 @@
-git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
-git: error: couldn't create cache file '/tmp/xcrun_db-AvzSnbSs' (errno=Operation not permitted)
-git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
-git: error: couldn't create cache file '/tmp/xcrun_db-uRcjnCT9' (errno=Operation not permitted)
 import { Body, Controller, Get, Param, Post, Req, Res, UseGuards, Headers } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiHeader } from "@nestjs/swagger";
 import { PaymentsService } from "./payments.service";

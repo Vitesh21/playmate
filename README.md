@@ -1,7 +1,3 @@
-git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
-git: error: couldn't create cache file '/tmp/xcrun_db-libDvM7Z' (errno=Operation not permitted)
-git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
-git: error: couldn't create cache file '/tmp/xcrun_db-Nk750t7P' (errno=Operation not permitted)
 # Playmate
 
 > **"Your court, your kit, one tap."** — Playmate combines **Playo-style court booking** with **District-style on-demand venue essentials**
