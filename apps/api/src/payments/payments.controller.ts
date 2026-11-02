@@ -169,9 +169,12 @@ export class PaymentsController {
     @Res() res: Response,
   ) {
     try {
-      const rawBody = (req as any).rawBody ?? JSON.stringify(req.body);
+      const rawBody = (req as any).rawBody as Buffer | undefined;
+      if (!rawBody) {
+        return res.status(400).json({ success: false, error: "Raw webhook body is unavailable" });
+      }
       const result = await this.paymentsService.handleRazorpayWebhook(
-        typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody),
+        rawBody,
         signature ?? "",
         req.body,
       );

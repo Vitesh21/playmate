@@ -8,7 +8,10 @@ export function useDimensions() {
   });
 
   useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window, screen }) => {
+    const subscription = Dimensions.addEventListener('change', ({ window, screen }: {
+      window: ScaledSize;
+      screen: ScaledSize;
+    }) => {
       setDimensions({ window, screen });
     });
     return () => subscription.remove();

@@ -143,7 +143,7 @@ export const HomeScreen: React.FC = () => {
       refreshControl={
         <RefreshControl
           refreshing={venuesQuery.isRefetching}
-          onRefresh={() => venuesQuery.refetch()}
+          onRefresh={() => { void venuesQuery.refetch(); }}
           tintColor={colors.primary[600]}
         />
       }

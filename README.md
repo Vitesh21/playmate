@@ -167,34 +167,24 @@ pnpm install
 cp .env.example .env
 ```
 
-Update the root `.env` with your Supabase values:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-or-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-secret-or-service-role-key
-```
-
-The service-role/secret key is backend-only. Never put it in the mobile app or commit `.env`. Razorpay should use test keys for local development. `RESEND_API_KEY` may be a placeholder until email is configured.
-
-### 3. Start local PostgreSQL
-
-The included [docker-compose.yml](docker-compose.yml) starts PostgreSQL on `localhost:54322`, matching `.env.example`:
+For local development, start the Supabase stack from the repository root:
 
 ```bash
-pnpm db:up
-pnpm db:generate
-pnpm db:migrate
+pnpm dlx supabase start
 ```
 
-Useful database commands:
+Copy the local `DB_URL`, `API_URL`, `ANON_KEY`, and `SERVICE_ROLE_KEY` printed by the CLI into the matching entries in `.env`. For a phone on the same Wi-Fi, set `EXPO_PUBLIC_SUPABASE_URL` in `apps/mobile/.env` to `http://<computer-LAN-IP>:54321` and use the local `ANON_KEY`. Keep the service-role key in the root `.env` only. Never put it in the mobile app or commit `.env`.
+
+### 3. Create the app schema and demo data
+
+The Supabase database uses port `55322` to avoid conflicting with the optional Postgres-only Docker service on `54322`:
 
 ```bash
-pnpm db:logs
-pnpm db:down
+pnpm --filter @playmate/api db:migrate
+pnpm --filter @playmate/api db:seed
 ```
 
-This Docker service provides PostgreSQL only. Supabase Auth and Storage still use the configured Supabase project.
+The seed creates demo users including `demo@playmate.dev` with password `playmate123`, plus venues, courts, and bookable slots. The Postgres-only service is optional and can still be started with `pnpm db:up`.
 
 ### 4. Run the API
 
@@ -214,21 +204,21 @@ curl http://localhost:3001/health
 
 Development API documentation is available at [http://localhost:3001/docs](http://localhost:3001/docs). Swagger is disabled when `NODE_ENV=production`.
 
-### 5. Run the mobile app later
+### 5. Run the mobile app
 
-The mobile app uses Expo, not React Native CLI:
+The mobile app uses Expo SDK 58 and the matching current Expo Go release:
 
 ```bash
 cp apps/mobile/.env.example apps/mobile/.env
 ```
 
-For an Android emulator, set `EXPO_PUBLIC_API_URL=http://10.0.2.2:3001` in `apps/mobile/.env`, then run:
+For an Android emulator, set `EXPO_PUBLIC_API_URL=http://10.0.2.2:3001` in `apps/mobile/.env`. For a physical phone, use your computer's LAN IP instead of `localhost` (both devices must be on the same Wi-Fi). Start the local database and API first, then run:
 
 ```bash
 pnpm --filter @playmate/mobile start
 ```
 
-Press `a` to open the Android emulator, or scan the QR code with Expo Go.
+Scan the QR code with Expo Go. In local development, `ALLOW_MOCK_PAYMENTS=true` enables a clearly marked mock checkout so the booking lifecycle can be tested without Razorpay credentials. Keep it disabled in production. To exercise Razorpay's test gateway, set valid Razorpay test keys and a separate webhook signing secret in the root `.env` and the public test key in `apps/mobile/.env`.
 
 ### Scripts (from repo root)
 ```bash

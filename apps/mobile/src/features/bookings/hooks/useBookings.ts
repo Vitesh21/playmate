@@ -22,7 +22,7 @@ export function useBookings(
   return useQuery<PaginatedResponse<Booking>>({
     queryKey: BOOKING_KEYS.list(filters),
     queryFn: async () => {
-      const res = await apiClient.get<ApiResponse<PaginatedResponse<Booking>>>('/bookings', {
+      const res = await apiClient.get<ApiResponse<PaginatedResponse<Booking>>>('/bookings/my', {
         params: filters,
       });
       return res.data ?? { items: [], total: 0, page: 1, perPage: 20, totalPages: 0 };
