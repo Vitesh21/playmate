@@ -34,7 +34,6 @@ function ThemedApp() {
     <View style={[styles.container, { backgroundColor: colors.background.screen }]}>
       <StatusBar
         style={resolvedMode === 'dark' ? 'light' : 'dark'}
-        backgroundColor={colors.background.primary}
       />
       <RootNavigator />
       <Toast

@@ -4,13 +4,7 @@
     "slug": "playmate",
     "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -19,10 +13,6 @@
       "bundleIdentifier": "com.playmate.app"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
       "package": "com.playmate.app",
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -38,12 +28,6 @@
     "plugins": [
       "expo-secure-store",
       "expo-font"
-    ],
-    "extra": {
-      "EXPO_PUBLIC_API_URL": "http://localhost:3001",
-      "EXPO_PUBLIC_SUPABASE_URL": "https://yfzrxkbzllcwwebfcqqz.supabase.co",
-      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_Fgm5mXwRhYkeB-D9g_jxdA_tvoi3Gqb",
-      "EXPO_PUBLIC_RAZORPAY_KEY_ID": "rzp_test_local"
-    }
+    ]
   }
 }

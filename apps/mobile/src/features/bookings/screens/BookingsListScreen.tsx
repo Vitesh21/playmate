@@ -29,7 +29,7 @@ export function BookingsListScreen() {
   );
 
   useEffect(() => {
-    let previousState = AppState.currentState;
+    let previousState = AppState.currentState ?? 'active';
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (previousState.match(/inactive|background/) && nextState === 'active') {
         void refetch();
