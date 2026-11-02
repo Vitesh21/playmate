@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  Linking,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 import { useTheme } from '@theme/index';
 import { useVenue, useVenueCourts, useCourtSlots, useCreateBooking } from '../hooks/useVenues';
 import { Button, LoadingState, ErrorState } from '@components/ui';
+import { paymentService } from '@shared/services';
 import type { Court, CourtSlot } from '@playmate/types';
 
 const PLACEHOLDER_IMAGES = [
@@ -61,13 +63,20 @@ export const VenueDetailScreen: React.FC = () => {
 
     try {
       const res: any = await bookingMutation.mutateAsync({ courtSlotId: selectedSlotId });
-      const bookingId = res?.booking?.id || res?.bookingId || 'Confirmed';
+      const bookingId = res?.booking?.id || res?.bookingId || 'Pending';
+      const paymentId = res?.payment?.id;
+
+      if (!paymentId) {
+        throw new Error('Payment session was not created for this booking');
+      }
+
+      const checkoutUrl = paymentService.getHostedCheckoutUrl(paymentId);
       Toast.show({
         type: 'success',
-        text1: 'Slot Reserved!',
-        text2: `Booking #${bookingId.slice(0, 8)} · Ready for payment`,
+        text1: 'Slot Held For Payment',
+        text2: `Booking #${bookingId.slice(0, 8)} · Complete payment in browser`,
       });
-      // Refresh slots
+      await Linking.openURL(checkoutUrl);
       slotsQuery.refetch();
       setSelectedSlotId(null);
     } catch (err: any) {

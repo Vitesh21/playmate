@@ -1,8 +1,9 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, gt } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { courts, type NewCourt } from "@/db/schema/courts";
 import { courtSlots, type NewCourtSlot } from "@/db/schema/court-slots";
+import { bookings } from "@/db/schema/bookings";
 import type {
   CourtCreateInput,
   CourtUpdateInput,
@@ -48,11 +49,35 @@ export class CourtsService {
     await this.findById(courtId);
     const filters: any[] = [eq(courtSlots.courtId, courtId)];
     if (date) filters.push(eq(courtSlots.date, date));
-    return this.db
+    const slots = await this.db
       .select()
       .from(courtSlots)
       .where(and(...filters))
       .orderBy(courtSlots.date, courtSlots.startTime);
+
+    if (slots.length === 0) {
+      return slots;
+    }
+
+    const heldSlots = await this.db
+      .select({ courtSlotId: bookings.courtSlotId })
+      .from(bookings)
+      .where(
+        and(
+          inArray(
+            bookings.courtSlotId,
+            slots.map((slot) => slot.id),
+          ),
+          eq(bookings.status, "PENDING"),
+          gt(bookings.expiresAt, new Date()),
+        ),
+      );
+
+    const heldSlotIds = new Set(heldSlots.map((row) => row.courtSlotId));
+    return slots.map((slot) => ({
+      ...slot,
+      isAvailable: slot.isAvailable && !heldSlotIds.has(slot.id),
+    }));
   }
 
   async createSlot(data: CourtSlotCreateInput) {

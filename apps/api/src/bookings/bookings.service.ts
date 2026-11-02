@@ -45,7 +45,7 @@
  */
 
 import { Inject, Injectable, NotFoundException, BadRequestException, ConflictException } from "@nestjs/common";
-import { eq, and, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, desc, sql, or, gt } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { bookings, type NewBooking, bookingStatusEnum } from "@/db/schema/bookings";
 import { courtSlots } from "@/db/schema/court-slots";
@@ -149,6 +149,24 @@ export class BookingsService {
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + config.booking.pendingExpiryMinutes);
 
+      const [activeBooking] = await tx
+        .select({ id: bookings.id })
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.courtSlotId, input.courtSlotId),
+            or(
+              eq(bookings.status, "CONFIRMED"),
+              and(eq(bookings.status, "PENDING"), gt(bookings.expiresAt, new Date())),
+            ),
+          ),
+        )
+        .limit(1);
+
+      if (activeBooking) {
+        throw new ConflictException("Slot is currently held for payment");
+      }
+
       // Step 3: insert the PENDING booking row
       const [booking] = await tx
         .insert(bookings)
@@ -163,18 +181,13 @@ export class BookingsService {
 
       if (!booking) throw new Error("Failed to create booking");
 
-      // Step 4: FLIP THE SLOT — mark it NOT available so other users
-      // can't even see it as bookable anymore. Runs inside the same tx,
-      // so a rollback here restores isAvailable=true.
-      await tx.update(courtSlots).set({ isAvailable: false }).where(eq(courtSlots.id, input.courtSlotId));
-
-      // Step 5: create Razorpay Order (payment intent).
+      // Step 4: create Razorpay Order (payment intent).
       // Receipt format: "<prefix>_BKG_<shortBookingId>"
       // NOTE: ×100 because Razorpay takes PAISA (not whole INR rupees).
       const receipt = `${config.payments.receiptPrefix}_BKG_${booking.id.slice(0, 8)}`;
       const rzpOrder = await this.razorpay.createOrder(slot.price * 100, receipt);
 
-      // Step 6: write our local payments record, linked to the booking
+      // Step 5: write our local payments record, linked to the booking
       const [payment] = await tx
         .insert(payments)
         .values({
@@ -187,7 +200,7 @@ export class BookingsService {
         } satisfies NewPayment)
         .returning();
 
-      // Step 7: backfill booking.paymentId (we needed booking.id to create
+      // Step 6: backfill booking.paymentId (we needed booking.id to create
       // the payment, so this is a 2-step link).
       await tx.update(bookings).set({ paymentId: payment.id }).where(eq(bookings.id, booking.id));
 
@@ -249,6 +262,8 @@ export class BookingsService {
           .where(eq(payments.id, booking.paymentId));
       }
 
+      await this.syncSlotAvailability(tx, booking.courtSlotId);
+
       return updated;
     });
   }
@@ -283,11 +298,7 @@ export class BookingsService {
         .where(eq(bookings.id, bookingId))
         .returning();
 
-      // Restore the slot to available so someone else can book it
-      await tx
-        .update(courtSlots)
-        .set({ isAvailable: true })
-        .where(eq(courtSlots.id, booking.courtSlotId));
+      await this.syncSlotAvailability(tx, booking.courtSlotId);
 
       return updated;
     });
@@ -318,13 +329,36 @@ export class BookingsService {
         .where(and(eq(bookings.status, "PENDING"), sql`${bookings.expiresAt} <= ${now}`))
         .returning();
 
-      // If any rows were expired, free their slots in one query
+      // If any rows were expired, recalculate the backing slot flag.
       if (expired.length > 0) {
-        const slotIds = expired.map((b) => b.courtSlotId);
-        await tx.update(courtSlots).set({ isAvailable: true }).where(inArray(courtSlots.id, slotIds));
+        const slotIds = [...new Set(expired.map((b) => b.courtSlotId))];
+        for (const slotId of slotIds) {
+          await this.syncSlotAvailability(tx, slotId);
+        }
       }
 
       return expired;
     });
+  }
+
+  private async syncSlotAvailability(tx: any, courtSlotId: string) {
+    const [confirmedBooking] = await tx
+      .select({ id: bookings.id })
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.courtSlotId, courtSlotId),
+          eq(bookings.status, "CONFIRMED"),
+        ),
+      )
+      .limit(1);
+
+    await tx
+      .update(courtSlots)
+      .set({
+        isAvailable: !confirmedBooking,
+        updatedAt: new Date(),
+      })
+      .where(eq(courtSlots.id, courtSlotId));
   }
 }
