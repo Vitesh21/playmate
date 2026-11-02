@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-6knvtwIx' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-3r9fLlHU' (errno=Operation not permitted)
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -135,7 +139,7 @@ export const ManageVenuesScreen: React.FC = () => {
       refreshControl={
         <RefreshControl
           refreshing={venuesQuery.isRefetching}
-          onRefresh={() => venuesQuery.refetch()}
+          onRefresh={() => { void venuesQuery.refetch(); }}
           tintColor={colors.primary[600]}
         />
       }

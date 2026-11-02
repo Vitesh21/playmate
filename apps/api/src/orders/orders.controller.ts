@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-Tkv4gCWB' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-xc9tTa9n' (errno=Operation not permitted)
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
@@ -55,15 +59,6 @@ export class OrdersController {
     const data = checkoutSchema.parse(body);
     const result = await this.ordersService.checkout(req.user.id, data);
     return { success: true, data: result };
-  }
-
-  @Post(":id/confirm")
-  @UseGuards(AuthGuard)
-  @ApiOperation({ summary: "Confirm order after payment" })
-  @ApiParam({ name: "id", description: "Order UUID" })
-  async confirm(@Param("id") id: string) {
-    const data = await this.ordersService.confirm(id);
-    return { success: true, data };
   }
 
   @Patch(":id/status")

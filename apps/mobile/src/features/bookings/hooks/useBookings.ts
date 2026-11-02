@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-2krkCaar' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-irXhVIhr' (errno=Operation not permitted)
 import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
 import apiClient from '@shared/services/api';
 import type {
@@ -22,7 +26,7 @@ export function useBookings(
   return useQuery<PaginatedResponse<Booking>>({
     queryKey: BOOKING_KEYS.list(filters),
     queryFn: async () => {
-      const res = await apiClient.get<ApiResponse<PaginatedResponse<Booking>>>('/bookings', {
+      const res = await apiClient.get<ApiResponse<PaginatedResponse<Booking>>>('/bookings/my', {
         params: filters,
       });
       return res.data ?? { items: [], total: 0, page: 1, perPage: 20, totalPages: 0 };

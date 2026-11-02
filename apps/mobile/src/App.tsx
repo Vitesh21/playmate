@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-ol9gw002' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-B0la8vWF' (errno=Operation not permitted)
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -34,7 +38,6 @@ function ThemedApp() {
     <View style={[styles.container, { backgroundColor: colors.background.screen }]}>
       <StatusBar
         style={resolvedMode === 'dark' ? 'light' : 'dark'}
-        backgroundColor={colors.background.primary}
       />
       <RootNavigator />
       <Toast

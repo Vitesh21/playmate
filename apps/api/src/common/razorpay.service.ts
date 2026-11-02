@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-iMtBn79i' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-lMRBSyrH' (errno=Operation not permitted)
 /**
  * Razorpay Service — Indian payment gateway integration.
  *
@@ -17,7 +21,7 @@
  * here for HMAC signing ONLY on the server.
  */
 
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Injectable, OnModuleInit, ServiceUnavailableException } from "@nestjs/common";
 import Razorpay from "razorpay";
 import { getConfig } from "@playmate/config";
 
@@ -55,13 +59,15 @@ export class RazorpayService implements OnModuleInit {
     const config = getConfig();
     // In local / development / test mode with placeholder test credentials,
     // return a mock Razorpay Order object so bookings and checkouts succeed smoothly.
-    if (
+    const credentialsMissing =
       !config.RAZORPAY_KEY_ID ||
       config.RAZORPAY_KEY_ID.includes("placeholder") ||
       config.RAZORPAY_KEY_ID.includes("local") ||
       !config.RAZORPAY_KEY_SECRET ||
-      config.RAZORPAY_KEY_SECRET.includes("local")
-    ) {
+      config.RAZORPAY_KEY_SECRET.includes("local");
+
+    if (credentialsMissing) {
+      if (config.NODE_ENV !== "production" && config.ALLOW_MOCK_PAYMENTS) {
       return {
         id: `order_mock_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         entity: "order",
@@ -74,6 +80,8 @@ export class RazorpayService implements OnModuleInit {
         attempts: 0,
         created_at: Math.floor(Date.now() / 1000),
       } as any;
+      }
+      throw new ServiceUnavailableException("Razorpay credentials are not configured");
     }
 
     try {
@@ -84,7 +92,7 @@ export class RazorpayService implements OnModuleInit {
       });
     } catch (err: any) {
       // Graceful fallback in non-production if Razorpay credentials fail authentication
-      if (process.env.NODE_ENV !== "production") {
+      if (config.NODE_ENV !== "production" && config.ALLOW_MOCK_PAYMENTS) {
         return {
           id: `order_dev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           entity: "order",
@@ -117,6 +125,22 @@ export class RazorpayService implements OnModuleInit {
     return this.client.payments.capture(paymentId, amount, "INR");
   }
 
+  async fetchPayment(paymentId: string) {
+    return this.client.payments.fetch(paymentId);
+  }
+
+  async fetchPaymentsForOrder(orderId: string) {
+    return this.client.orders.fetchPayments(orderId);
+  }
+
+  async refundPayment(paymentId: string, amount: number) {
+    return this.client.payments.refund(paymentId, {
+      amount,
+      receipt: `playmate-${paymentId}`,
+      notes: { reason: "booking_hold_expired" },
+    });
+  }
+
   /**
    * Verify the CLIENT-SIDE payment signature.
    *
@@ -145,7 +169,9 @@ export class RazorpayService implements OnModuleInit {
       .createHmac("sha256", config.RAZORPAY_KEY_SECRET)
       .update(`${orderId}|${paymentId}`)
       .digest("hex");
-    return generated === signature;
+    const expected = Buffer.from(generated, "hex");
+    const received = Buffer.from(signature, "hex");
+    return expected.length === received.length && crypto.timingSafeEqual(expected, received);
   }
 
   /**
@@ -161,13 +187,18 @@ export class RazorpayService implements OnModuleInit {
    *
    * Returns true = webhook is authentic; false = forged (caller should 403).
    */
-  async verifyWebhookSignature(body: string, signature: string): Promise<boolean> {
+  async verifyWebhookSignature(body: string | Buffer, signature: string): Promise<boolean> {
     const crypto = await import("crypto");
     const config = getConfig();
+    const webhookSecret = config.RAZORPAY_WEBHOOK_SECRET ||
+      (config.NODE_ENV !== "production" ? config.RAZORPAY_KEY_SECRET : "");
+    if (!webhookSecret) return false;
     const generated = crypto
-      .createHmac("sha256", config.RAZORPAY_KEY_SECRET)
+      .createHmac("sha256", webhookSecret)
       .update(body)
       .digest("hex");
-    return generated === signature;
+    const expected = Buffer.from(generated, "hex");
+    const received = Buffer.from(signature, "hex");
+    return expected.length === received.length && crypto.timingSafeEqual(expected, received);
   }
 }

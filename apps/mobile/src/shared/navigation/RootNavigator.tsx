@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-LbjnA6Fa' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-qyliwcKT' (errno=Operation not permitted)
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
   NavigationContainer,
@@ -12,6 +16,7 @@ import { useTheme } from '@theme/index';
 import { LoginScreen, RegisterScreen, ForgotPasswordScreen } from '@features/auth';
 import { HomeScreen } from '@features/home';
 import { ProfileScreen } from '@features/profile';
+import { BookingsListScreen } from '@features/bookings';
 import { AdminDashboardScreen } from '@features/admin';
 import { ManageVenuesScreen, CreateVenueScreen, ManageVenueSlotsScreen, VenueDetailScreen } from '@features/venues';
 import { UserRole } from '@playmate/types';
@@ -139,7 +144,7 @@ function BookingsNavigator() {
   return (
     <BookingsStack.Navigator screenOptions={opts}>
       <BookingsStack.Screen name="BookingsList" options={{ title: 'My Bookings' }}>
-        {() => <Placeholder title="Bookings List" />}
+        {() => <BookingsListScreen />}
       </BookingsStack.Screen>
       <BookingsStack.Screen name="BookingDetail" options={{ title: 'Booking' }}>
         {() => <Placeholder title="Booking + Essentials" />}

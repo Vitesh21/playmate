@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-TKtzGi6g' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-oAlcFmSY' (errno=Operation not permitted)
 /**
  * @playmate/config — Zod-validated env vars + static app constants.
  *
@@ -43,6 +47,8 @@ const envSchema = z.object({
   // Razorpay — use TEST-mode keys locally, swap to LIVE in production secret panel.
   RAZORPAY_KEY_ID: z.string().default("rzp_test_local"),
   RAZORPAY_KEY_SECRET: z.string().default("rzp_test_local_secret"),
+  RAZORPAY_WEBHOOK_SECRET: z.string().default(""),
+  ALLOW_MOCK_PAYMENTS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().default("rzp_test_local"),
 
   // Resend.com transactional email
@@ -69,6 +75,8 @@ const strictEnvSchema = z.object({
 
   RAZORPAY_KEY_ID: z.string().min(1, "RAZORPAY_KEY_ID is required"),
   RAZORPAY_KEY_SECRET: z.string().min(1, "RAZORPAY_KEY_SECRET is required"),
+  RAZORPAY_WEBHOOK_SECRET: z.string().min(1, "RAZORPAY_WEBHOOK_SECRET is required"),
+  ALLOW_MOCK_PAYMENTS: z.literal("false").default("false").transform(() => false),
   NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().min(1, "NEXT_PUBLIC_RAZORPAY_KEY_ID is required"),
 
   RESEND_API_KEY: z.string().min(1, "RESEND_API_KEY is required"),

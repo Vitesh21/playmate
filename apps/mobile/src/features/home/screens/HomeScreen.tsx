@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-vdt6IxAi' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-fFu8IjUa' (errno=Operation not permitted)
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -143,7 +147,7 @@ export const HomeScreen: React.FC = () => {
       refreshControl={
         <RefreshControl
           refreshing={venuesQuery.isRefetching}
-          onRefresh={() => venuesQuery.refetch()}
+          onRefresh={() => { void venuesQuery.refetch(); }}
           tintColor={colors.primary[600]}
         />
       }

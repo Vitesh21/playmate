@@ -1,3 +1,7 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-GDl6q4iO' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-UWh2Q3sU' (errno=Operation not permitted)
 /**
  * Bookings Service — Court slot reservation state machine.
  *
@@ -44,11 +48,22 @@
  *     handled outside this service today).
  */
 
-import { Inject, Injectable, NotFoundException, BadRequestException, ConflictException } from "@nestjs/common";
-import { eq, and, inArray, desc, sql, or, gt } from "drizzle-orm";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from "@nestjs/common";
+import { eq, and, inArray, desc, sql, or, gt, lt } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { bookings, type NewBooking, bookingStatusEnum } from "@/db/schema/bookings";
 import { courtSlots } from "@/db/schema/court-slots";
+import { courts } from "@/db/schema/courts";
+import { venues } from "@/db/schema/venues";
 import { payments, type NewPayment, paymentStatusEnum, paymentMethodEnum } from "@/db/schema/payments";
 import type { BookingCreateInput, PaginationInput } from "@playmate/validation";
 import type { PaginatedResponse, BookingStatus, PaymentStatus } from "@playmate/types";
@@ -56,11 +71,27 @@ import { RazorpayService } from "@/common/razorpay.service";
 import { config } from "@playmate/config";
 
 @Injectable()
-export class BookingsService {
+export class BookingsService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(BookingsService.name);
+  private expiryTimer?: NodeJS.Timeout;
+
   constructor(
     @Inject(DRIZZLE_DB) private readonly db: DrizzleDb,
     private readonly razorpay: RazorpayService,
   ) {}
+
+  onModuleInit() {
+    this.expiryTimer = setInterval(() => {
+      void this.expirePending().catch((error: unknown) => {
+        this.logger.error("Failed to expire pending bookings", error);
+      });
+    }, 30_000);
+    this.expiryTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.expiryTimer) clearInterval(this.expiryTimer);
+  }
 
   /**
    * Paginated listing of bookings for a single user.
@@ -77,8 +108,11 @@ export class BookingsService {
     const [items, [totalObj]] = await Promise.all([
       // One page of rows: newest-first
       this.db
-        .select()
+        .select({ booking: bookings, courtSlot: courtSlots, court: courts, venue: venues })
         .from(bookings)
+        .leftJoin(courtSlots, eq(bookings.courtSlotId, courtSlots.id))
+        .leftJoin(courts, eq(courtSlots.courtId, courts.id))
+        .leftJoin(venues, eq(courts.venueId, venues.id))
         .where(eq(bookings.userId, userId))
         .orderBy(desc(bookings.createdAt))
         .limit(perPage)
@@ -87,15 +121,30 @@ export class BookingsService {
       this.db.select({ value: sql<number>`count(*)` }).from(bookings).where(eq(bookings.userId, userId)),
     ]);
     const total = Number(totalObj?.value ?? 0);
-    return { items, total, page, perPage, totalPages: Math.ceil(total / perPage) };
+    return {
+      items: items.map(({ booking, courtSlot, court, venue }) => ({
+        ...booking,
+        courtSlot,
+        court,
+        venue,
+      })),
+      total,
+      page,
+      perPage,
+      totalPages: Math.ceil(total / perPage),
+    };
   }
 
   /**
    * Fetch a single booking by primary key. Throws 404 if missing.
    * No row lock — safe for read-only display endpoints.
    */
-  async findById(id: string) {
-    const [item] = await this.db.select().from(bookings).where(eq(bookings.id, id)).limit(1);
+  async findById(id: string, userId?: string) {
+    const [item] = await this.db
+      .select()
+      .from(bookings)
+      .where(userId ? and(eq(bookings.id, id), eq(bookings.userId, userId)) : eq(bookings.id, id))
+      .limit(1);
     if (!item) throw new NotFoundException("Booking not found");
     return item;
   }
@@ -246,6 +295,9 @@ export class BookingsService {
       if (booking.status !== "PENDING") {
         throw new BadRequestException(`Cannot confirm booking in ${booking.status} state`);
       }
+      if (booking.expiresAt && booking.expiresAt <= new Date()) {
+        throw new ConflictException("The payment window for this booking has expired");
+      }
 
       // Transition to CONFIRMED
       const [updated] = await tx
@@ -271,26 +323,26 @@ export class BookingsService {
   /**
    * CANCEL BOOKING — user-initiated cancellation.
    *
-   * Allowed from: PENDING or CONFIRMED.
+   * Allowed from: PENDING only. Confirmed cancellations require a refund flow.
    * Already CANCELLED / EXPIRED → no-op (idempotent).
    *
-   * Side-effect: the linked courtSlot.isAvailable is set back to true so
-   * the slot is re-listed for other users. (Note: if called on a CONFIRMED
-   * booking, this returns the slot to availability — refunds on the payment
-   * side are handled separately.)
+   * Side-effect: the linked court slot is re-listed for other users.
    */
-  async cancel(bookingId: string) {
+  async cancel(bookingId: string, userId: string) {
     return this.db.transaction(async (tx) => {
       const [booking] = await tx
         .select()
         .from(bookings)
-        .where(eq(bookings.id, bookingId))
+        .where(and(eq(bookings.id, bookingId), eq(bookings.userId, userId)))
         .limit(1)
         .for("update");
 
       if (!booking) throw new NotFoundException("Booking not found");
       // Terminal states → idempotent success, nothing to do
       if (booking.status === "CANCELLED" || booking.status === "EXPIRED") return booking;
+      if (booking.status !== "PENDING") {
+        throw new BadRequestException("Confirmed bookings cannot be cancelled through this endpoint");
+      }
 
       const [updated] = await tx
         .update(bookings)
@@ -305,8 +357,8 @@ export class BookingsService {
   }
 
   /**
-   * EXPIRE PENDING BOOKINGS — cron job entry point (scheduled elsewhere,
-   * e.g. every 1 or 5 minutes).
+   * EXPIRE PENDING BOOKINGS — runs from the module's periodic expiry timer
+   * and is also available to administrators for manual maintenance.
    *
    * Sweeps through all bookings where:
    *   status = 'PENDING' AND expiresAt <= now
@@ -326,7 +378,7 @@ export class BookingsService {
       const expired = await tx
         .update(bookings)
         .set({ status: "EXPIRED" as BookingStatus, updatedAt: new Date() })
-        .where(and(eq(bookings.status, "PENDING"), sql`${bookings.expiresAt} <= ${now}`))
+        .where(and(eq(bookings.status, "PENDING"), lt(bookings.expiresAt, now)))
         .returning();
 
       // If any rows were expired, recalculate the backing slot flag.
@@ -334,6 +386,16 @@ export class BookingsService {
         const slotIds = [...new Set(expired.map((b) => b.courtSlotId))];
         for (const slotId of slotIds) {
           await this.syncSlotAvailability(tx, slotId);
+        }
+
+        const paymentIds = expired
+          .map((booking) => booking.paymentId)
+          .filter((paymentId): paymentId is string => Boolean(paymentId));
+        if (paymentIds.length > 0) {
+          await tx
+            .update(payments)
+            .set({ status: "FAILED" as PaymentStatus, updatedAt: new Date() })
+            .where(and(inArray(payments.id, paymentIds), eq(payments.status, "PENDING")));
         }
       }
 

@@ -1,9 +1,14 @@
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-SZiK6SIO' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-jNotUtSQ' (errno=Operation not permitted)
 import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
 import { BookingsService } from "./bookings.service";
 import { bookingCreateSchema, paginationSchema } from "@playmate/validation";
-import { AuthGuard } from "@/common/auth.guard";
+import { AuthGuard, RolesGuard } from "@/common/auth.guard";
+import { UserRole } from "@playmate/types";
 
 export class CreateBookingDto extends createZodDto(bookingCreateSchema) {}
 export class BookingPaginationQueryDto extends createZodDto(paginationSchema) {}
@@ -28,8 +33,8 @@ export class BookingsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get booking by ID" })
   @ApiParam({ name: "id", description: "Booking UUID" })
-  async findOne(@Param("id") id: string) {
-    const data = await this.bookingsService.findById(id);
+  async findOne(@Req() req: any, @Param("id") id: string) {
+    const data = await this.bookingsService.findById(id, req.user.id);
     return { success: true, data };
   }
 
@@ -43,27 +48,19 @@ export class BookingsController {
     return { success: true, data: result };
   }
 
-  @Post(":id/confirm")
-  @UseGuards(AuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: "Confirm booking after payment" })
-  @ApiParam({ name: "id", description: "Booking UUID" })
-  async confirm(@Param("id") id: string) {
-    const data = await this.bookingsService.confirm(id);
-    return { success: true, data };
-  }
-
   @Delete(":id")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Cancel booking" })
   @ApiParam({ name: "id", description: "Booking UUID" })
-  async cancel(@Param("id") id: string) {
-    await this.bookingsService.cancel(id);
+  async cancel(@Req() req: any, @Param("id") id: string) {
+    await this.bookingsService.cancel(id, req.user.id);
     return { success: true, message: "Booking cancelled" };
   }
 
   @Post("expire-pending")
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.ADMIN]))
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Expire stale pending bookings (cron / maintenance)" })
   async expirePending() {
     const expired = await this.bookingsService.expirePending();
