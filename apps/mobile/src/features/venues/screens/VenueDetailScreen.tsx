@@ -258,7 +258,11 @@ export const VenueDetailScreen: React.FC = () => {
                   >
                     <Text style={s.slotTime}>{slot.startTime} - {slot.endTime}</Text>
                     <Text style={s.slotPrice}>
-                      {isAvail ? `₹${slot.price}` : 'Booked'}
+                      {isAvail
+                        ? `₹${slot.price}`
+                        : slot.isHeld
+                          ? 'Held for payment'
+                          : 'Booked'}
                     </Text>
                   </TouchableOpacity>
                 );

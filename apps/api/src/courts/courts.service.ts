@@ -74,10 +74,14 @@ export class CourtsService {
       );
 
     const heldSlotIds = new Set(heldSlots.map((row) => row.courtSlotId));
-    return slots.map((slot) => ({
-      ...slot,
-      isAvailable: slot.isAvailable && !heldSlotIds.has(slot.id),
-    }));
+    return slots.map((slot) => {
+      const isHeld = heldSlotIds.has(slot.id);
+      return {
+        ...slot,
+        isAvailable: slot.isAvailable && !isHeld,
+        isHeld,
+      };
+    });
   }
 
   async createSlot(data: CourtSlotCreateInput) {
