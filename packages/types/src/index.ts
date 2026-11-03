@@ -180,6 +180,8 @@ export type CourtSlot = {
   startTime: string;
   endTime: string;
   isAvailable: boolean;
+  /** A pending checkout temporarily holds this slot until payment or expiry. */
+  isHeld?: boolean;
   price: number;
 } & Timestamp;
 
