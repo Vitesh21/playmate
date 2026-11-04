@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Req, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
 import { UsersService } from "./users.service";
@@ -38,13 +38,12 @@ export class UsersController {
     return { success: true, data: user };
   }
 
-  @Delete(":id")
+  @Delete("me")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Delete user account" })
-  @ApiParam({ name: "id", description: "User UUID" })
-  async remove(@Param("id") id: string) {
-    await this.usersService.remove(id);
+  async remove(@Req() req: any) {
+    await this.usersService.remove(req.user.id);
     return { success: true, message: "User deleted" };
   }
 }

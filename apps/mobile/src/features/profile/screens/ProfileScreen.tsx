@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useTheme } from '@theme/index';
 import { Badge, Button, Card } from '@components/ui';
 import { useAuthStore } from '@store/auth.store';
 import { roleBadgeVariant, roleLabel } from '@utils/index';
 import { UserRole } from '@playmate/types';
+import apiClient from '@shared/services/api';
 
 const ROLE_BLURB: Record<string, string> = {
   [UserRole.ADMIN]:
@@ -21,6 +22,14 @@ export const ProfileScreen: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const deleteAccount = async () => {
+    try {
+      await apiClient.delete('/users/me');
+      await logout();
+    } catch {
+      Alert.alert('Could not delete account', 'Please try again. If this continues, contact support.');
+    }
+  };
 
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Player';
   const initials =
@@ -47,6 +56,7 @@ export const ProfileScreen: React.FC = () => {
     rowValue: { ...typography.body1, color: colors.text.primary, marginTop: spacing.xxs },
     blurb: { ...typography.body2, color: colors.text.secondary, marginTop: spacing.sm },
     signOut: { marginTop: spacing.lg },
+    deleteAccount: { marginTop: spacing.md },
   });
 
   return (
@@ -76,6 +86,21 @@ export const ProfileScreen: React.FC = () => {
         onPress={() => {
           logout().catch(() => undefined);
         }}
+      />
+      <Button
+        title="Delete account and data"
+        variant="outline"
+        size="lg"
+        fullWidth
+        style={s.deleteAccount}
+        onPress={() => Alert.alert(
+          'Delete your account?',
+          'This permanently removes your Playmate account and profile. This cannot be undone.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete account', style: 'destructive', onPress: () => { void deleteAccount(); } },
+          ],
+        )}
       />
     </ScrollView>
   );
