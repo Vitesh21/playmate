@@ -62,6 +62,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       apiClient.setToken(token);
       await storage.setAccessToken(token);
+      const refreshToken = res.data?.session?.refresh_token;
+      if (refreshToken) await storage.setRefreshToken(refreshToken);
 
       const user = mapUser(res.data?.user);
       if (user) {
@@ -91,6 +93,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       apiClient.setToken(token);
       await storage.setAccessToken(token);
+      const refreshToken = loginRes.data?.session?.refresh_token;
+      if (refreshToken) await storage.setRefreshToken(refreshToken);
 
       const user = mapUser(loginRes.data?.user);
       if (user) {
@@ -127,22 +131,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const token = await storage.getAccessToken();
+      const refreshToken = await storage.getRefreshToken();
       const storedUser = await storage.getUser<User>();
-
-      if (token && storedUser) {
-        apiClient.setToken(token);
-        set({ user: storedUser, session: token, isAuthenticated: true });
-        return;
-      }
 
       if (token) {
         apiClient.setToken(token);
+        if (refreshToken) {
+          const refreshed = await apiClient.post<ApiResponse<any>>('/auth/refresh', { refreshToken });
+          const session = refreshed.data?.session;
+          const freshToken = session?.access_token;
+          if (!freshToken) throw new Error('Session refresh did not return an access token');
+          apiClient.setToken(freshToken);
+          await storage.setAccessToken(freshToken);
+          if (session.refresh_token) await storage.setRefreshToken(session.refresh_token);
+          const user = mapUser(refreshed.data?.user) ?? storedUser;
+          if (user) await storage.setUser(user);
+          set({ user: user ?? null, session: freshToken, isAuthenticated: !!user });
+          return;
+        }
+
+        // Older app sessions stored only an access token. Validate it once; if
+        // expired, the user must sign in again to establish a refresh token.
         const user = await runAndRestore(async () => {});
         if (user) {
           await storage.setUser(user);
           set({ user, session: token, isAuthenticated: true });
         } else {
+          apiClient.clearToken();
           await storage.clearAuth();
+          set({ user: null, session: null, isAuthenticated: false });
         }
       }
     } catch {
@@ -169,5 +186,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 }));
+
+apiClient.setOnAuthExpired(() => {
+  useAuthStore.setState({ user: null, session: null, isAuthenticated: false, isLoading: false });
+});
 
 export default useAuthStore;

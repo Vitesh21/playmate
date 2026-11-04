@@ -36,6 +36,16 @@ export class AuthService {
     return data;
   }
 
+  async refresh(refreshToken: string) {
+    const { data, error } = await this.supabase.admin.auth.refreshSession({
+      refresh_token: refreshToken,
+    });
+    if (error || !data.session || !data.user) {
+      throw new UnauthorizedException(error?.message || "Session expired. Please sign in again.");
+    }
+    return data;
+  }
+
   async signOut(accessToken: string) {
     const { error } = await this.supabase.admin.auth.admin.signOut(accessToken);
     if (error) {
