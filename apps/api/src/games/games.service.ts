@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, lte, or } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { gameParticipants, games } from "@/db/schema/games";
+import { users } from "@/db/schema/users";
 import type { GameCreateInput, GameSearchInput } from "@playmate/validation";
 
 @Injectable()
@@ -9,7 +10,11 @@ export class GamesService {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
 
   async search(filters: GameSearchInput) {
-    const conditions = [eq(games.visibility, "PUBLIC"), eq(games.status, "OPEN"), gte(games.startsAt, new Date())];
+    const conditions = [
+      eq(games.visibility, "PUBLIC"),
+      or(eq(games.status, "OPEN"), eq(games.status, "FULL"))!,
+      gte(games.startsAt, new Date()),
+    ];
     if (filters.sportId) conditions.push(eq(games.sportId, filters.sportId));
     if (filters.from) conditions.push(gte(games.startsAt, new Date(filters.from)));
     if (filters.to) conditions.push(lte(games.startsAt, new Date(filters.to)));
@@ -35,17 +40,18 @@ export class GamesService {
   async join(gameId: string, userId: string, message?: string) {
     return this.db.transaction(async (tx) => {
       const [game] = await tx.select().from(games).where(eq(games.id, gameId)).for("update").limit(1);
-      if (!game || game.status !== "OPEN") throw new NotFoundException("Open game not found");
+      if (!game || (game.status !== "OPEN" && game.status !== "FULL")) throw new NotFoundException("This game is no longer open to join");
       if (game.visibility === "PRIVATE") throw new ForbiddenException("This game is invite only");
       if (game.hostId === userId) throw new BadRequestException("You are already hosting this game");
       const [existing] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId))).limit(1);
       if (existing && existing.status !== "LEFT" && existing.status !== "DECLINED") throw new BadRequestException("You already have a request for this game");
       const approved = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.status, "APPROVED"))).limit(game.maxPlayers);
-      const status = approved.length >= game.maxPlayers ? "WAITLISTED" : game.instantJoin ? "APPROVED" : "REQUESTED";
+      const isFull = game.status === "FULL" || approved.length >= game.maxPlayers;
+      const status = isFull ? "WAITLISTED" : game.instantJoin ? "APPROVED" : "REQUESTED";
       const [participant] = existing
         ? await tx.update(gameParticipants).set({ status, message: message ?? null, updatedAt: new Date() }).where(eq(gameParticipants.id, existing.id)).returning()
         : await tx.insert(gameParticipants).values({ gameId, userId, status, message }).returning();
-      if (status === "APPROVED" && approved.length + 1 >= game.maxPlayers) {
+      if (!isFull && status === "APPROVED" && approved.length + 1 >= game.maxPlayers) {
         await tx.update(games).set({ status: "FULL", updatedAt: new Date() }).where(eq(games.id, gameId));
       }
       return participant;
@@ -56,7 +62,22 @@ export class GamesService {
     const [game] = await this.db.select().from(games).where(eq(games.id, gameId)).limit(1);
     if (!game) throw new NotFoundException("Game not found");
     if (game.hostId !== userId) throw new ForbiddenException("Only the host can view join requests");
-    return this.db.select().from(gameParticipants).where(eq(gameParticipants.gameId, gameId));
+    return this.db.select({
+      id: gameParticipants.id,
+      gameId: gameParticipants.gameId,
+      userId: gameParticipants.userId,
+      status: gameParticipants.status,
+      message: gameParticipants.message,
+      createdAt: gameParticipants.createdAt,
+      updatedAt: gameParticipants.updatedAt,
+      player: {
+        firstName: users.firstName,
+        lastName: users.lastName,
+        avatarUrl: users.avatarUrl,
+      },
+    }).from(gameParticipants)
+      .innerJoin(users, eq(users.id, gameParticipants.userId))
+      .where(eq(gameParticipants.gameId, gameId));
   }
 
   async decide(gameId: string, participantId: string, userId: string, approve: boolean) {
@@ -83,12 +104,25 @@ export class GamesService {
     return this.db.transaction(async (tx) => {
       const [game] = await tx.select().from(games).where(eq(games.id, gameId)).for("update").limit(1);
       if (!game) throw new NotFoundException("Game not found");
+      if (game.hostId === userId) throw new BadRequestException("As the host, cancel the game to notify everyone.");
+      const [existing] = await tx.select().from(gameParticipants)
+        .where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId))).limit(1);
+      if (!existing || existing.status === "LEFT" || existing.status === "DECLINED") {
+        throw new NotFoundException("Game participation not found");
+      }
       const [participant] = await tx.update(gameParticipants).set({ status: "LEFT", updatedAt: new Date() })
-        .where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId))).returning();
+        .where(eq(gameParticipants.id, existing.id)).returning();
       if (!participant) throw new NotFoundException("Game participation not found");
-      if (game.status === "FULL") await tx.update(games).set({ status: "OPEN", updatedAt: new Date() }).where(eq(games.id, gameId));
-      const [next] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.status, "WAITLISTED"))).orderBy(gameParticipants.createdAt).limit(1);
-      if (next) await tx.update(gameParticipants).set({ status: game.instantJoin ? "APPROVED" : "REQUESTED", updatedAt: new Date() }).where(eq(gameParticipants.id, next.id));
+      if (existing.status === "APPROVED" && game.status === "FULL") {
+        const [next] = await tx.select().from(gameParticipants)
+          .where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.status, "WAITLISTED")))
+          .orderBy(gameParticipants.createdAt).limit(1);
+        if (next) {
+          await tx.update(gameParticipants).set({ status: "APPROVED", updatedAt: new Date() }).where(eq(gameParticipants.id, next.id));
+        } else {
+          await tx.update(games).set({ status: "OPEN", updatedAt: new Date() }).where(eq(games.id, gameId));
+        }
+      }
       return participant;
     });
   }

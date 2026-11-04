@@ -13,6 +13,8 @@ const TOKEN_KEY = 'auth_token';
 class ApiClient {
   private instance: AxiosInstance;
   private token: string | null = null;
+  private refreshInFlight: Promise<string | null> | null = null;
+  private onAuthExpired?: () => void;
 
   constructor() {
     this.instance = axios.create({
@@ -44,8 +46,9 @@ class ApiClient {
     return response.data;
   }
 
-  private handleError(error: any) {
+  private async handleError(error: any) {
     const errorData = error.response?.data as any;
+    const request = error.config as (InternalAxiosRequestConfig & { _playmateRetried?: boolean }) | undefined;
     const validationMessage = Array.isArray(errorData?.errors)
       ? errorData.errors[0]?.message
       : undefined;
@@ -56,8 +59,20 @@ class ApiClient {
       error.message ||
       'Something went wrong. Please try again.';
 
+    const authEndpoint = /\/auth\/(login|signup|refresh)$/.test(request?.url ?? '');
+    if (error.response?.status === 401 && request && !request._playmateRetried && !authEndpoint) {
+      request._playmateRetried = true;
+      const freshToken = await this.refreshAccessToken();
+      if (freshToken) {
+        request.headers.Authorization = `Bearer ${freshToken}`;
+        return this.instance.request(request);
+      }
+    }
+
     if (error.response?.status === 401) {
       this.clearToken();
+      await storage.clearAuth();
+      if (!/\/auth\/(login|signup)$/.test(request?.url ?? '')) this.onAuthExpired?.();
       Toast.show({
         type: 'error',
         text1: 'Session Expired',
@@ -79,9 +94,35 @@ class ApiClient {
     } as ApiError & { status?: number });
   }
 
+  private async refreshAccessToken(): Promise<string | null> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = (async () => {
+        const refreshToken = await storage.getRefreshToken();
+        if (!refreshToken) return null;
+        const response = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken }, { timeout: 30000 });
+        const session = response.data?.data?.session;
+        const accessToken = session?.access_token;
+        if (!accessToken || !session?.refresh_token) return null;
+        this.token = accessToken;
+        await Promise.all([
+          storage.setAccessToken(accessToken),
+          storage.setRefreshToken(session.refresh_token),
+        ]);
+        return accessToken;
+      })().catch(() => null).finally(() => {
+        this.refreshInFlight = null;
+      });
+    }
+    return this.refreshInFlight;
+  }
+
   setToken(token: string) {
     this.token = token;
     storage.setItem(TOKEN_KEY, token);
+  }
+
+  setOnAuthExpired(handler: () => void) {
+    this.onAuthExpired = handler;
   }
 
   clearToken() {

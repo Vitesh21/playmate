@@ -20,6 +20,9 @@ export const loginSchema = z.object({
 });
 export class LoginDto extends createZodDto(loginSchema) {}
 
+export const refreshSchema = z.object({ refreshToken: z.string().min(1) });
+export class RefreshDto extends createZodDto(refreshSchema) {}
+
 export const resetPasswordSchema = z.object({
   email: z.string().email(),
 });
@@ -53,6 +56,16 @@ export class AuthController {
   async login(@Body() body: LoginDto) {
     const data = loginSchema.parse(body);
     const res = await this.authService.signIn(data.email, data.password);
+    const appUser = await this.usersService.upsertByAuth(res.user as any);
+    return { success: true, data: { user: appUser, session: res.session } };
+  }
+
+  @Post("refresh")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Refresh an expired access token" })
+  async refresh(@Body() body: RefreshDto) {
+    const data = refreshSchema.parse(body);
+    const res = await this.authService.refresh(data.refreshToken);
     const appUser = await this.usersService.upsertByAuth(res.user as any);
     return { success: true, data: { user: appUser, session: res.session } };
   }
