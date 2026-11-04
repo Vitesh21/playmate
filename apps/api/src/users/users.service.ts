@@ -4,10 +4,14 @@ import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { users, type NewUser } from "@/db/schema/users";
 import type { UserUpdateInput } from "@playmate/validation";
 import { UserRole } from "@playmate/types";
+import { SupabaseService } from "@/common/supabase.service";
 
 @Injectable()
 export class UsersService {
-  constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
+  constructor(
+    @Inject(DRIZZLE_DB) private readonly db: DrizzleDb,
+    private readonly supabase: SupabaseService,
+  ) {}
 
   async findAll() {
     return this.db.select().from(users).orderBy(users.createdAt);
@@ -80,6 +84,8 @@ export class UsersService {
   }
 
   async remove(id: string) {
+    const { error: authError } = await this.supabase.admin.auth.admin.deleteUser(id);
+    if (authError) throw authError;
     const [deleted] = await this.db.delete(users).where(eq(users.id, id)).returning();
     if (!deleted) throw new NotFoundException("User not found");
     return deleted;
