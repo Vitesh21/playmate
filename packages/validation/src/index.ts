@@ -103,6 +103,27 @@ export const bookingCreateSchema = z.object({
   courtSlotId: z.string().uuid("Invalid slot ID"),
 });
 
+export const gameCreateSchema = z.object({
+  sportId: z.string().uuid(),
+  venueId: z.string().uuid().optional().nullable(),
+  title: z.string().min(3).max(120),
+  notes: z.string().max(1000).optional().nullable(),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  visibility: z.enum(["PUBLIC", "PRIVATE"]).default("PUBLIC"),
+  skillMin: z.string().max(40).optional().nullable(),
+  skillMax: z.string().max(40).optional().nullable(),
+  maxPlayers: z.number().int().min(2).max(100),
+  costPerPlayer: z.number().int().min(0).default(0),
+  instantJoin: z.boolean().default(false),
+});
+
+export const gameSearchSchema = z.object({
+  sportId: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
 export const categoryCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   slug: z.string().min(1, "Slug is required"),
@@ -305,6 +326,8 @@ export type CourtCreateInput = z.infer<typeof courtCreateSchema>;
 export type CourtUpdateInput = z.infer<typeof courtUpdateSchema>;
 export type CourtSlotCreateInput = z.infer<typeof courtSlotCreateSchema>;
 export type BookingCreateInput = z.infer<typeof bookingCreateSchema>;
+export type GameCreateInput = z.infer<typeof gameCreateSchema>;
+export type GameSearchInput = z.infer<typeof gameSearchSchema>;
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>;
 export type CategoryUpdateInput = z.infer<typeof categoryUpdateSchema>;
 export type ProductCreateInput = z.infer<typeof productCreateSchema>;

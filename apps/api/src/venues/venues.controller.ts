@@ -80,9 +80,9 @@ export class VenuesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Update venue details (VENUE_OWNER / ADMIN)" })
   @ApiParam({ name: "id", description: "Venue UUID" })
-  async update(@Param("id") id: string, @Body() body: UpdateVenueDto) {
+  async update(@Req() req: any, @Param("id") id: string, @Body() body: UpdateVenueDto) {
     const data = venueUpdateSchema.parse(body);
-    const venue = await this.venuesService.update(id, data);
+    const venue = await this.venuesService.update(id, data, req.user.id, req.user.role);
     return { success: true, data: venue };
   }
 
@@ -91,8 +91,8 @@ export class VenuesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Delete a venue (VENUE_OWNER / ADMIN)" })
   @ApiParam({ name: "id", description: "Venue UUID" })
-  async remove(@Param("id") id: string) {
-    await this.venuesService.remove(id);
+  async remove(@Req() req: any, @Param("id") id: string) {
+    await this.venuesService.remove(id, req.user.id, req.user.role);
     return { success: true, message: "Venue deleted" };
   }
 }

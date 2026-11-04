@@ -1,4 +1,4 @@
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
 import apiClient from '@shared/services/api';
 import type { ApiResponse, User } from '@playmate/types';
 
@@ -7,6 +7,7 @@ const ADMIN_KEYS = {
   stats: () => [...ADMIN_KEYS.all, 'stats'] as const,
   users: () => [...ADMIN_KEYS.all, 'users'] as const,
   venues: () => [...ADMIN_KEYS.all, 'venues'] as const,
+  pendingVenues: () => [...ADMIN_KEYS.all, 'pendingVenues'] as const,
 };
 
 export type AdminStats = {
@@ -48,6 +49,28 @@ export function useAdminVenues(options?: Omit<UseQueryOptions<any[]>, 'queryKey'
       return res.data?.items ?? [];
     },
     ...options,
+  });
+}
+
+export type PendingVenue = { id: string; name: string; city: string; state: string; address: string };
+
+export function usePendingVenues() {
+  return useQuery<PendingVenue[]>({
+    queryKey: ADMIN_KEYS.pendingVenues(),
+    queryFn: async () => (await apiClient.get<ApiResponse<PendingVenue[]>>('/admin/venues/pending')).data ?? [],
+  });
+}
+
+export function useVerifyVenue() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'APPROVED' | 'REJECTED' }) =>
+      apiClient.patch(`/admin/venues/${id}/verification`, { status }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ADMIN_KEYS.pendingVenues() });
+      void client.invalidateQueries({ queryKey: ADMIN_KEYS.venues() });
+      void client.invalidateQueries({ queryKey: ADMIN_KEYS.stats() });
+    },
   });
 }
 

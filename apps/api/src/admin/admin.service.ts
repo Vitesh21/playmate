@@ -38,4 +38,12 @@ export class AdminService {
   async getAllVenues() {
     return this.venuesService.search({ page: 1, perPage: 100 });
   }
+
+  async getPendingVenues() {
+    return this.venuesService.pendingVerification();
+  }
+
+  async verifyVenue(id: string, status: "APPROVED" | "REJECTED") {
+    return this.venuesService.setVerification(id, status);
+  }
 }

@@ -17,3 +17,4 @@ export * from "./orders";
 export * from "./payments";
 export * from "./reviews";
 export * from "./notifications";
+export * from "./games";

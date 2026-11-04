@@ -23,11 +23,14 @@ import {
   boolean,
   decimal,
   jsonb,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 import { sports } from "./sports";
 import { users } from "./users";
 
 // A physical sports venue (arena, club, ground) that contains one or more courts
+export const venueVerificationEnum = pgEnum("venue_verification_status", ["PENDING", "APPROVED", "REJECTED"]);
+
 export const venues = pgTable("venues", {
   id: uuid("id").primaryKey().defaultRandom(),           // Surrogate primary key, UUID v4 generated at insert
   name: text("name").notNull(),                          // Display name of the venue (e.g. "Downtown Badminton Club")
@@ -57,6 +60,7 @@ export const venues = pgTable("venues", {
     >()
     .default([]),
   isActive: boolean("is_active").default(true).notNull(),// Toggle: when false, venue is unlisted & non-bookable
+  verificationStatus: venueVerificationEnum("verification_status").default("PENDING").notNull(),
   ownerId: uuid("owner_id").references(() => users.id),  // FK to users — the VENUE_OWNER who manages this venue
   createdAt: timestamp("created_at", { mode: "date", withTimezone: true })  // Timestamp when venue record was created
     .defaultNow()

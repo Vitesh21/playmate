@@ -1,9 +1,11 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { eq, and, inArray, gt } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { courts, type NewCourt } from "@/db/schema/courts";
 import { courtSlots, type NewCourtSlot } from "@/db/schema/court-slots";
 import { bookings } from "@/db/schema/bookings";
+import { venues } from "@/db/schema/venues";
+import { UserRole } from "@playmate/types";
 import type {
   CourtCreateInput,
   CourtUpdateInput,
@@ -24,22 +26,36 @@ export class CourtsService {
     return item;
   }
 
-  async create(data: CourtCreateInput) {
+  private async assertVenueAccess(venueId: string, actorId: string, role: UserRole) {
+    const [venue] = await this.db.select({ ownerId: venues.ownerId }).from(venues).where(eq(venues.id, venueId)).limit(1);
+    if (!venue) throw new NotFoundException("Venue not found");
+    if (role !== UserRole.ADMIN && venue.ownerId !== actorId) throw new ForbiddenException("You can only manage courts at your own venues");
+  }
+
+  async create(data: CourtCreateInput, actorId: string, role: UserRole) {
+    await this.assertVenueAccess(data.venueId, actorId, role);
     const [created] = await this.db.insert(courts).values(data as unknown as NewCourt).returning();
     return created;
   }
 
-  async update(id: string, data: CourtUpdateInput) {
+  async update(id: string, data: CourtUpdateInput, actorId: string, role: UserRole) {
+    const existing = await this.findById(id);
+    await this.assertVenueAccess(existing.venueId, actorId, role);
+    if (role !== UserRole.ADMIN && data.venueId && data.venueId !== existing.venueId) {
+      throw new ForbiddenException("A court cannot be moved to another venue");
+    }
     const [updated] = await this.db
       .update(courts)
-      .set({ ...(data as unknown as Partial<NewCourt>), updatedAt: new Date() })
+      .set({ ...(role === UserRole.ADMIN ? data : { ...data, venueId: undefined } as any), updatedAt: new Date() })
       .where(eq(courts.id, id))
       .returning();
     if (!updated) throw new NotFoundException("Court not found");
     return updated;
   }
 
-  async remove(id: string) {
+  async remove(id: string, actorId: string, role: UserRole) {
+    const existing = await this.findById(id);
+    await this.assertVenueAccess(existing.venueId, actorId, role);
     const [deleted] = await this.db.delete(courts).where(eq(courts.id, id)).returning();
     if (!deleted) throw new NotFoundException("Court not found");
     return deleted;
@@ -84,7 +100,9 @@ export class CourtsService {
     });
   }
 
-  async createSlot(data: CourtSlotCreateInput) {
+  async createSlot(data: CourtSlotCreateInput, actorId: string, role: UserRole) {
+    const court = await this.findById(data.courtId);
+    await this.assertVenueAccess(court.venueId, actorId, role);
     const [created] = await this.db
       .insert(courtSlots)
       .values(data as unknown as NewCourtSlot)
@@ -92,7 +110,9 @@ export class CourtsService {
     return created;
   }
 
-  async bulkCreateSlots(courtId: string, slots: CourtSlotCreateInput[]) {
+  async bulkCreateSlots(courtId: string, slots: CourtSlotCreateInput[], actorId: string, role: UserRole) {
+    const court = await this.findById(courtId);
+    await this.assertVenueAccess(court.venueId, actorId, role);
     const values = slots.map((s) => ({ ...s, courtId } as unknown as NewCourtSlot));
     return this.db.insert(courtSlots).values(values).onConflictDoNothing().returning();
   }

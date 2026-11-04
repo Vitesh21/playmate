@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { eq, ilike, and, gte, lte, count, desc, inArray, or } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { venues, type NewVenue } from "@/db/schema/venues";
@@ -11,6 +11,7 @@ import type {
   PaginationInput,
 } from "@playmate/validation";
 import type { PaginatedResponse } from "@playmate/types";
+import { UserRole } from "@playmate/types";
 
 @Injectable()
 export class VenuesService {
@@ -21,7 +22,7 @@ export class VenuesService {
     const perPage = params.perPage ?? 10;
     const offset = (page - 1) * perPage;
 
-    const filters: any[] = [eq(venues.isActive, true)];
+    const filters: any[] = [eq(venues.isActive, true), eq(venues.verificationStatus, "APPROVED")];
     if (params.sportId) filters.push(eq(venues.sportId, params.sportId));
     if (params.city) filters.push(ilike(venues.city, `%${params.city}%`));
     if (params.search) {
@@ -54,13 +55,13 @@ export class VenuesService {
   }
 
   async findById(id: string) {
-    const [item] = await this.db.select().from(venues).where(eq(venues.id, id)).limit(1);
+    const [item] = await this.db.select().from(venues).where(and(eq(venues.id, id), eq(venues.verificationStatus, "APPROVED"))).limit(1);
     if (!item) throw new NotFoundException("Venue not found");
     return item;
   }
 
   async findBySlug(slug: string) {
-    const [item] = await this.db.select().from(venues).where(eq(venues.slug, slug)).limit(1);
+    const [item] = await this.db.select().from(venues).where(and(eq(venues.slug, slug), eq(venues.verificationStatus, "APPROVED"))).limit(1);
     if (!item) throw new NotFoundException("Venue not found");
     return item;
   }
@@ -70,17 +71,23 @@ export class VenuesService {
     return created;
   }
 
-  async update(id: string, data: VenueUpdateInput) {
+  async update(id: string, data: VenueUpdateInput, actorId: string, role: UserRole) {
+    const [venue] = await this.db.select().from(venues).where(eq(venues.id, id)).limit(1);
+    if (!venue) throw new NotFoundException("Venue not found");
+    if (role !== UserRole.ADMIN && venue.ownerId !== actorId) throw new ForbiddenException("You can only update your own venues");
     const [updated] = await this.db
       .update(venues)
-      .set({ ...(data as unknown as Partial<NewVenue>), updatedAt: new Date() })
+      .set({ ...(role === UserRole.ADMIN ? data : { ...data, ownerId: undefined } as any), updatedAt: new Date() })
       .where(eq(venues.id, id))
       .returning();
     if (!updated) throw new NotFoundException("Venue not found");
     return updated;
   }
 
-  async remove(id: string) {
+  async remove(id: string, actorId: string, role: UserRole) {
+    const [venue] = await this.db.select().from(venues).where(eq(venues.id, id)).limit(1);
+    if (!venue) throw new NotFoundException("Venue not found");
+    if (role !== UserRole.ADMIN && venue.ownerId !== actorId) throw new ForbiddenException("You can only delete your own venues");
     const [deleted] = await this.db.delete(venues).where(eq(venues.id, id)).returning();
     if (!deleted) throw new NotFoundException("Venue not found");
     return deleted;
@@ -98,5 +105,15 @@ export class VenuesService {
       .from(venues)
       .where(eq(venues.ownerId, ownerId))
       .orderBy(desc(venues.createdAt));
+  }
+
+  async pendingVerification() {
+    return this.db.select().from(venues).where(eq(venues.verificationStatus, "PENDING")).orderBy(desc(venues.createdAt));
+  }
+
+  async setVerification(id: string, status: "APPROVED" | "REJECTED") {
+    const [updated] = await this.db.update(venues).set({ verificationStatus: status, updatedAt: new Date() }).where(eq(venues.id, id)).returning();
+    if (!updated) throw new NotFoundException("Venue not found");
+    return updated;
   }
 }

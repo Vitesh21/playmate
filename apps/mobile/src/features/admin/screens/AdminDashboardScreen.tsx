@@ -5,6 +5,8 @@ import { Badge, ErrorState, LoadingState } from '@components/ui';
 import { useAdminStats, useAdminUsers } from '@features/admin';
 import { roleBadgeVariant, roleLabel } from '@utils/index';
 import { formatRelativeTime } from '@utils/index';
+import { Button } from '@components/ui';
+import { usePendingVenues, useVerifyVenue } from '../hooks/useAdmin';
 
 /** Admin-only dashboard: platform stats + every account and its role. */
 export const AdminDashboardScreen: React.FC = () => {
@@ -12,6 +14,8 @@ export const AdminDashboardScreen: React.FC = () => {
 
   const statsQuery = useAdminStats();
   const usersQuery = useAdminUsers();
+  const pendingVenuesQuery = usePendingVenues();
+  const verifyVenue = useVerifyVenue();
 
   const stats = statsQuery.data;
   const users = usersQuery.data ?? [];
@@ -53,6 +57,8 @@ export const AdminDashboardScreen: React.FC = () => {
     userName: { ...typography.subtitle2, color: colors.text.primary },
     userEmail: { ...typography.caption, color: colors.text.tertiary, marginTop: 2 },
     centered: { paddingTop: spacing.xxxxl },
+    venueAddress: { ...typography.caption, color: colors.text.tertiary, marginTop: 3 },
+    venueActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   });
 
   if (statsQuery.isLoading && usersQuery.isLoading) {
@@ -77,6 +83,7 @@ export const AdminDashboardScreen: React.FC = () => {
           onRefresh={() => {
             statsQuery.refetch();
             usersQuery.refetch();
+            pendingVenuesQuery.refetch();
           }}
           tintColor={colors.primary[600]}
         />
@@ -100,6 +107,20 @@ export const AdminDashboardScreen: React.FC = () => {
           <Text style={s.statLabel}>Sports</Text>
         </View>
       </View>
+
+      <Text style={s.section}>Venue verification ({pendingVenuesQuery.data?.length ?? 0})</Text>
+      {(pendingVenuesQuery.data ?? []).map((venue) => (
+        <View key={venue.id} style={s.userRow}>
+          <View style={s.userInfo}>
+            <Text style={s.userName}>{venue.name}</Text>
+            <Text style={s.venueAddress}>{venue.address}, {venue.city}, {venue.state}</Text>
+            <View style={s.venueActions}>
+              <Button title="Approve" size="sm" loading={verifyVenue.isPending} onPress={() => verifyVenue.mutate({ id: venue.id, status: 'APPROVED' })} />
+              <Button title="Reject" size="sm" variant="outline" loading={verifyVenue.isPending} onPress={() => verifyVenue.mutate({ id: venue.id, status: 'REJECTED' })} />
+            </View>
+          </View>
+        </View>
+      ))}
 
       <Text style={s.section}>Accounts ({users.length})</Text>
       {users.map((u) => (

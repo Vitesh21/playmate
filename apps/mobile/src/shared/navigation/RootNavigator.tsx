@@ -14,6 +14,7 @@ import { HomeScreen } from '@features/home';
 import { ProfileScreen } from '@features/profile';
 import { BookingsListScreen } from '@features/bookings';
 import { AdminDashboardScreen } from '@features/admin';
+import { GamesScreen } from '@features/games/GamesScreen';
 import { ManageVenuesScreen, CreateVenueScreen, ManageVenueSlotsScreen, VenueDetailScreen } from '@features/venues';
 import { UserRole } from '@playmate/types';
 import type {
@@ -79,6 +80,7 @@ function HomeNavigator() {
   return (
     <HomeStack.Navigator screenOptions={opts}>
       <HomeStack.Screen name="Home" component={HomeScreen} options={{ title: 'Playmate' }} />
+      <HomeStack.Screen name="Games" component={GamesScreen} options={{ title: 'Find a game' }} />
       <HomeStack.Screen
         name="VenueDetail"
         component={VenueDetailScreen}
