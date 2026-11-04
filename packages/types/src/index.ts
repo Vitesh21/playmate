@@ -53,6 +53,18 @@ export enum PaymentMethod {
   RAZORPAY = "RAZORPAY",
 }
 
+export enum GameVisibility {
+  PUBLIC = "PUBLIC",
+  PRIVATE = "PRIVATE",
+}
+
+export enum GameStatus {
+  OPEN = "OPEN",
+  FULL = "FULL",
+  CANCELLED = "CANCELLED",
+  COMPLETED = "COMPLETED",
+}
+
 /**
  * Lifecycle of an e-commerce order.
  *  PENDING   → Cart converted, inventory reserved, waiting for Razorpay.

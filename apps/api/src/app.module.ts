@@ -19,6 +19,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
 import { AdminModule } from "./admin/admin.module";
 import { DatabaseModule } from "./db/database.module";
 import { HealthModule } from "./health/health.module";
+import { GamesModule } from "./games/games.module";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { HealthModule } from "./health/health.module";
     CommonModule,
     DatabaseModule,
     HealthModule,
+    GamesModule,
     AuthModule,
     UsersModule,
     SportsModule,

@@ -72,6 +72,9 @@ export const HomeScreen: React.FC = () => {
           {user?.firstName ? `Hey ${user.firstName}` : 'Find your next game'}
         </Text>
         <Text style={s.subtitle}>Book a court, we&apos;ll bring the gear.</Text>
+        <View style={{ marginTop: spacing.md }}>
+          <Button title="Find or host a game" variant="outline" onPress={() => navigation.navigate('Games')} />
+        </View>
       </View>
 
       <FlatList

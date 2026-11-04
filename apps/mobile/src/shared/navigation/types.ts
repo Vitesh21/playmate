@@ -17,6 +17,7 @@ export type HomeStackParamList = {
   CategoryProducts: { categoryId?: string; categorySlug?: string };
   SportVenues: { sportId: string };
   Search: undefined;
+  Games: undefined;
 };
 
 export type ShopStackParamList = {

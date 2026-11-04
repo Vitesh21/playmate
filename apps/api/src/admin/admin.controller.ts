@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Patch, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { AdminService } from "./admin.service";
 import { AuthGuard, RolesGuard } from "@/common/auth.guard";
@@ -30,5 +30,18 @@ export class AdminController {
   async getVenues() {
     const data = await this.adminService.getAllVenues();
     return { success: true, data };
+  }
+
+  @Get("venues/pending")
+  @ApiOperation({ summary: "List venues waiting for verification" })
+  async getPendingVenues() {
+    return { success: true, data: await this.adminService.getPendingVenues() };
+  }
+
+  @Patch("venues/:id/verification")
+  @ApiOperation({ summary: "Approve or reject a venue listing" })
+  async verifyVenue(@Param("id") id: string, @Body() body: { status: "APPROVED" | "REJECTED" }) {
+    if (body.status !== "APPROVED" && body.status !== "REJECTED") throw new BadRequestException("Status must be APPROVED or REJECTED");
+    return { success: true, data: await this.adminService.verifyVenue(id, body.status) };
   }
 }
