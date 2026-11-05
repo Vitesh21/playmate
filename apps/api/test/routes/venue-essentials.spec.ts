@@ -142,7 +142,7 @@ describe("Venue Essentials routes (e2e)", () => {
     });
 
     it("accepts valid payload from ADMIN", async () => {
-      mockGetUser.mockResolvedValue({ data: { user: VALID_ADMIN }, error: null });
+      mockGetUser.mockResolvedValue({ data: { user: { ...VALID_ADMIN, app_metadata: { role: "ADMIN" } } }, error: null });
       mockCreate.mockResolvedValue({ ...ESSENTIAL, id: "e-new" });
       const res = await request(app.getHttpServer())
         .post("/venue-essentials")
@@ -179,7 +179,7 @@ describe("Venue Essentials routes (e2e)", () => {
     });
 
     it("ADMIN can soft-delete (archive)", async () => {
-      mockGetUser.mockResolvedValue({ data: { user: VALID_ADMIN }, error: null });
+      mockGetUser.mockResolvedValue({ data: { user: { ...VALID_ADMIN, app_metadata: { role: "ADMIN" } } }, error: null });
       mockRemove.mockResolvedValue(undefined);
       const res = await request(app.getHttpServer())
         .delete("/venue-essentials/e-1")
@@ -346,7 +346,7 @@ describe("Venue Essentials routes (e2e)", () => {
     });
 
     it("ADMIN can transition to DELIVERED", async () => {
-      mockGetUser.mockResolvedValue({ data: { user: VALID_ADMIN }, error: null });
+      mockGetUser.mockResolvedValue({ data: { user: { ...VALID_ADMIN, app_metadata: { role: "ADMIN" } } }, error: null });
       mockUpdateOnDemandStatus.mockResolvedValue({ id: "odo-1", status: "DELIVERED" });
       const res = await request(app.getHttpServer())
         .patch("/venue-essentials/on-demand/odo-1/status")

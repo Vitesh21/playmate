@@ -95,7 +95,7 @@ export const ProfileScreen: React.FC = () => {
         style={s.deleteAccount}
         onPress={() => Alert.alert(
           'Delete your account?',
-          'This permanently removes your Playmate account and profile. This cannot be undone.',
+          'This deletes your sign-in and anonymizes your profile. Booking and payment records may be retained for accounting or dispute handling. This cannot be undone.',
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete account', style: 'destructive', onPress: () => { void deleteAccount(); } },

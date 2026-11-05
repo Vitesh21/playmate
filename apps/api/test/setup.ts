@@ -2,7 +2,8 @@ jest.mock("@/common/supabase.service", () => ({
   SupabaseService: jest.fn().mockImplementation(() => ({
     admin: {
       auth: {
-        getUser: jest.fn(),
+        getUser: jest.fn().mockResolvedValue({ data: { user: null }, error: { message: "Invalid token" } }),
+        admin: { deleteUser: jest.fn().mockResolvedValue({ error: null }) },
       },
     },
   })),
@@ -13,12 +14,13 @@ const mockDb = {
   select: jest.fn().mockReturnThis(),
   from: jest.fn().mockReturnThis(),
   where: jest.fn().mockReturnThis(),
-  orderBy: jest.fn().mockReturnThis(),
-  limit: jest.fn().mockReturnThis(),
-  offset: jest.fn().mockReturnThis(),
+  orderBy: jest.fn().mockResolvedValue([]),
+  limit: jest.fn().mockResolvedValue([]),
+  offset: jest.fn().mockResolvedValue([]),
   insert: jest.fn().mockReturnThis(),
   values: jest.fn().mockReturnThis(),
   returning: jest.fn().mockResolvedValue([]),
+  onConflictDoNothing: jest.fn().mockReturnThis(),
   update: jest.fn().mockReturnThis(),
   set: jest.fn().mockReturnThis(),
   delete: jest.fn().mockReturnThis(),

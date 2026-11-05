@@ -22,7 +22,10 @@ import {
   uuid,
   varchar,
   jsonb,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // Authorization role assigned to each user account, controls feature access
 export const userRoleEnum = pgEnum("user_role", [
@@ -48,6 +51,32 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })  // Timestamp of last mutation to this row
     .defaultNow()
     .notNull(),
+});
+
+export const userBlocks = pgTable("user_blocks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  blockerId: uuid("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  blockedUserId: uuid("blocked_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uniqueBlock: uniqueIndex("user_blocks_pair_unique").on(table.blockerId, table.blockedUserId),
+  noSelfBlock: check("user_blocks_no_self", sql`${table.blockerId} <> ${table.blockedUserId}`),
+}));
+
+export const userReportStatusEnum = pgEnum("user_report_status", ["OPEN", "REVIEWED", "ACTIONED", "DISMISSED"]);
+export const userReportTargetEnum = pgEnum("user_report_target", ["USER", "GAME", "REVIEW"]);
+
+export const userReports = pgTable("user_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  reporterId: uuid("reporter_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetUserId: uuid("target_user_id").references(() => users.id, { onDelete: "set null" }),
+  targetType: userReportTargetEnum("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  reason: text("reason").notNull(),
+  status: userReportStatusEnum("status").notNull().default("OPEN"),
+  resolutionNote: text("resolution_note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export type User = typeof users.$inferSelect;   // TypeScript type for a fully selected user row

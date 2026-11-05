@@ -1,9 +1,8 @@
 import request from "supertest";
 import type { INestApplication } from "@nestjs/common";
 import { createTestApp } from "../helpers";
-import { AuthService } from "@/auth/auth.service";
-import { AuthGuard } from "@/common/auth.guard";
 import { SupabaseService } from "@/common/supabase.service";
+import { UsersService } from "@/users/users.service";
 import { VALID_USER, VALID_ADMIN, authBearer } from "../helpers";
 
 const mockSignUp = jest.fn();
@@ -11,6 +10,7 @@ const mockSignIn = jest.fn();
 const mockSignOut = jest.fn();
 const mockResetPassword = jest.fn();
 const mockGetUser = jest.fn();
+const mockUpsertByAuth = jest.fn();
 
 jest.mock("@/auth/auth.service", () => ({
   AuthService: jest.fn().mockImplementation(() => ({
@@ -26,15 +26,14 @@ describe("Auth routes (e2e)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSignIn.mockRejectedValueOnce(new Error("bad credentials")).mockRejectedValueOnce(
-      new Error("bad credentials"),
-    );
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: "Invalid token" } });
   });
 
   beforeAll(async () => {
     app = await createTestApp();
     const sb = app.get(SupabaseService);
     (sb as any).admin = { auth: { getUser: mockGetUser } };
+    jest.spyOn(app.get(UsersService), "upsertByAuth").mockImplementation(mockUpsertByAuth);
   });
 
   afterAll(async () => {
@@ -60,6 +59,7 @@ describe("Auth routes (e2e)", () => {
 
     it("accepts valid signup and returns success shape", async () => {
       mockSignUp.mockResolvedValue({ user: { id: "u1", email: "ok@example.com" } });
+      mockUpsertByAuth.mockResolvedValue({ id: "u1", email: "ok@example.com", role: "USER" });
       const res = await request(app.getHttpServer())
         .post("/auth/signup")
         .send({ email: "ok@example.com", password: "strongp@ss12" });
@@ -82,16 +82,16 @@ describe("Auth routes (e2e)", () => {
     it("returns session shape on valid login", async () => {
       mockSignIn.mockReset();
       mockSignIn.mockResolvedValue({
-        accessToken: "at",
-        refreshToken: "rt",
-        user: VALID_USER,
+        session: { access_token: "at", refresh_token: "rt" },
+        user: { id: VALID_USER.id, email: VALID_USER.email },
       });
+      mockUpsertByAuth.mockResolvedValue(VALID_USER);
       const res = await request(app.getHttpServer())
         .post("/auth/login")
         .send({ email: "user@example.com", password: "correct" });
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.accessToken).toBeDefined();
+      expect(res.body.data.session.access_token).toBeDefined();
       expect(res.body.data.user.role).toBe("USER");
     });
   });
@@ -110,7 +110,7 @@ describe("Auth routes (e2e)", () => {
     });
 
     it("returns user payload when authenticated", async () => {
-      mockGetUser.mockResolvedValueOnce({ data: { user: VALID_ADMIN }, error: null });
+      mockGetUser.mockResolvedValueOnce({ data: { user: { ...VALID_ADMIN, app_metadata: { role: "ADMIN" } } }, error: null });
       const res = await request(app.getHttpServer())
         .get("/auth/me")
         .set(authBearer(VALID_ADMIN));
