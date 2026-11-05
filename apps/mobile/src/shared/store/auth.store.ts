@@ -173,7 +173,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const res = await apiClient.patch<ApiResponse<User>, Partial<User>>(
-        `/users/${get().user?.id}`,
+        '/users/me',
         profileData
       );
       const updatedUser = res.data;

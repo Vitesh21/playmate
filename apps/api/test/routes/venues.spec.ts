@@ -28,7 +28,10 @@ jest.mock("@/venues/venues.service", () => ({
 describe("Venues routes (e2e)", () => {
   let app: INestApplication;
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetUser.mockResolvedValue({ data: { user: { ...VALID_VENUE_OWNER, app_metadata: { role: "VENUE_OWNER" } } }, error: null });
+  });
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -116,7 +119,7 @@ describe("Venues routes (e2e)", () => {
         state: "KA",
         pincode: "560001",
       };
-      const res = await request(app.getHttpServer()).post("/venues").send(payload);
+      const res = await request(app.getHttpServer()).post("/venues").set(authBearer(VALID_VENUE_OWNER)).send(payload);
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
     });

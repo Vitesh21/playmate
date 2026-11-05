@@ -1,10 +1,11 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
-import { users, type NewUser } from "@/db/schema/users";
+import { users, userBlocks, type NewUser } from "@/db/schema/users";
 import type { UserUpdateInput } from "@playmate/validation";
 import { UserRole } from "@playmate/types";
 import { SupabaseService } from "@/common/supabase.service";
+import { BadRequestException } from "@nestjs/common";
 
 @Injectable()
 export class UsersService {
@@ -83,11 +84,35 @@ export class UsersService {
     return updated;
   }
 
+  async block(blockerId: string, blockedUserId: string) {
+    if (blockerId === blockedUserId) throw new BadRequestException("You cannot block your own account");
+    const [block] = await this.db.insert(userBlocks).values({ blockerId, blockedUserId }).onConflictDoNothing().returning();
+    return block ?? { blockerId, blockedUserId };
+  }
+
+  async unblock(blockerId: string, blockedUserId: string) {
+    await this.db.delete(userBlocks).where(and(eq(userBlocks.blockerId, blockerId), eq(userBlocks.blockedUserId, blockedUserId)));
+  }
+
   async remove(id: string) {
+    const [user] = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!user) throw new NotFoundException("User not found");
+
     const { error: authError } = await this.supabase.admin.auth.admin.deleteUser(id);
-    if (authError) throw authError;
-    const [deleted] = await this.db.delete(users).where(eq(users.id, id)).returning();
-    if (!deleted) throw new NotFoundException("User not found");
-    return deleted;
+    if (authError) throw new BadRequestException("Could not delete the authentication account");
+
+    // Preserve booking/order/payment history for accounting and dispute handling,
+    // while removing direct profile data from the application database.
+    const [anonymized] = await this.db.update(users).set({
+      email: `deleted+${id}@account.invalid`,
+      firstName: "Deleted",
+      lastName: "Player",
+      phone: null,
+      avatarUrl: null,
+      profile: {},
+      updatedAt: new Date(),
+    }).where(eq(users.id, id)).returning();
+    if (!anonymized) throw new BadRequestException("The account was removed but its profile could not be anonymized");
+    return anonymized;
   }
 }

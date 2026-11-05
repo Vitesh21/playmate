@@ -20,6 +20,7 @@ import { AdminModule } from "./admin/admin.module";
 import { DatabaseModule } from "./db/database.module";
 import { HealthModule } from "./health/health.module";
 import { GamesModule } from "./games/games.module";
+import { ReportsModule } from "./reports/reports.module";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { GamesModule } from "./games/games.module";
     DatabaseModule,
     HealthModule,
     GamesModule,
+    ReportsModule,
     AuthModule,
     UsersModule,
     SportsModule,

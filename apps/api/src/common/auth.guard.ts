@@ -54,20 +54,25 @@ export class AuthGuard implements CanActivate {
     const tokenRole = appMeta.role as UserRole | undefined;
 
     // Ensure a local profile row exists (needed for FK writes) and read its role.
-    let [row] = await this.db.select().from(users).where(eq(users.id, supa.id)).limit(1);
+    const existingRows = await this.db.select().from(users).where(eq(users.id, supa.id)).limit(1);
+    let row: any = existingRows[0];
     if (!row) {
-      const inserted = await this.db
-        .insert(users)
-        .values({
-          id: supa.id,
-          email: supa.email ?? null,
-          firstName: meta.firstName ?? null,
-          lastName: meta.lastName ?? null,
-          role: (tokenRole ?? UserRole.USER) as any,
-        })
-        .onConflictDoNothing()
-        .returning();
-      row = inserted[0];
+      const inserted = await this.db.insert(users).values({
+        id: supa.id,
+        email: supa.email ?? null,
+        firstName: meta.firstName ?? null,
+        lastName: meta.lastName ?? null,
+        role: (tokenRole ?? UserRole.USER) as any,
+      }).onConflictDoNothing().returning();
+      row = inserted[0] ?? {
+        id: supa.id,
+        email: supa.email ?? null,
+        firstName: meta.firstName ?? null,
+        lastName: meta.lastName ?? null,
+        phone: null,
+        avatarUrl: null,
+        role: tokenRole ?? UserRole.USER,
+      };
     }
 
     const role: UserRole = tokenRole ?? (row?.role as UserRole) ?? UserRole.USER;

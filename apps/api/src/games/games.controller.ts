@@ -14,9 +14,11 @@ export class GamesController {
   constructor(private readonly games: GamesService) {}
 
   @Get()
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Find public games" })
-  async search(@Query() query: SearchGamesDto) {
-    return { success: true, data: await this.games.search(gameSearchSchema.parse(query)) };
+  async search(@Query() query: SearchGamesDto, @Req() req: any) {
+    return { success: true, data: await this.games.search(gameSearchSchema.parse(query), req.user.id) };
   }
 
   @Get("mine")

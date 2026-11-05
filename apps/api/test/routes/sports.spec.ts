@@ -2,6 +2,8 @@ import request from "supertest";
 import type { INestApplication } from "@nestjs/common";
 import { createTestApp } from "../helpers";
 import { SportsService } from "@/sports/sports.service";
+import { SupabaseService } from "@/common/supabase.service";
+import { VALID_ADMIN, authBearer } from "../helpers";
 
 const mockSearch = jest.fn();
 const mockFindBySlug = jest.fn();
@@ -9,6 +11,7 @@ const mockFindById = jest.fn();
 const mockCreate = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
+const mockGetUser = jest.fn();
 
 jest.mock("@/sports/sports.service", () => ({
   SportsService: jest.fn().mockImplementation(() => ({
@@ -24,10 +27,14 @@ jest.mock("@/sports/sports.service", () => ({
 describe("Sports routes (e2e)", () => {
   let app: INestApplication;
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetUser.mockResolvedValue({ data: { user: { ...VALID_ADMIN, app_metadata: { role: "ADMIN" } } }, error: null });
+  });
 
   beforeAll(async () => {
     app = await createTestApp();
+    (app.get(SupabaseService) as any).admin = { auth: { getUser: mockGetUser } };
   });
   afterAll(async () => app.close());
 
@@ -92,6 +99,7 @@ describe("Sports routes (e2e)", () => {
       mockCreate.mockResolvedValue({ ...SPORT, id: "s-new", name: "Tennis", slug: "tennis" });
       const res = await request(app.getHttpServer())
         .post("/sports")
+        .set(authBearer(VALID_ADMIN))
         .send({ name: "Tennis", slug: "tennis" });
       expect(res.status).toBe(201);
       expect(res.body.data.name).toBe("Tennis");
@@ -103,6 +111,7 @@ describe("Sports routes (e2e)", () => {
       mockUpdate.mockResolvedValue({ ...SPORT, name: "Badminton Pro" });
       const res = await request(app.getHttpServer())
         .patch("/sports/s-1")
+        .set(authBearer(VALID_ADMIN))
         .send({ name: "Badminton Pro" });
       expect(res.status).toBe(200);
       expect(res.body.data.name).toBe("Badminton Pro");
@@ -112,7 +121,7 @@ describe("Sports routes (e2e)", () => {
   describe("DELETE /sports/:id", () => {
     it("returns success message", async () => {
       mockRemove.mockResolvedValue(undefined);
-      const res = await request(app.getHttpServer()).delete("/sports/s-1");
+      const res = await request(app.getHttpServer()).delete("/sports/s-1").set(authBearer(VALID_ADMIN));
       expect(res.status).toBe(200);
       expect(res.body.message).toBe("Sport deleted");
     });

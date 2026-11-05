@@ -1,5 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '@shared/services/api';
 import { useTheme } from '@theme/index';
 import { Badge, ErrorState, LoadingState } from '@components/ui';
 import { useAdminStats, useAdminUsers } from '@features/admin';
@@ -16,6 +18,15 @@ export const AdminDashboardScreen: React.FC = () => {
   const usersQuery = useAdminUsers();
   const pendingVenuesQuery = usePendingVenues();
   const verifyVenue = useVerifyVenue();
+  const queryClient = useQueryClient();
+  const reportsQuery = useQuery({
+    queryKey: ['admin', 'reports', 'open'],
+    queryFn: () => apiClient.get<{ data: Array<{ id: string; targetType: string; targetId: string; reason: string; createdAt: string }> }>('/reports/admin/open').then((response) => response.data ?? []),
+  });
+  const resolveReport = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'ACTIONED' | 'DISMISSED' }) => apiClient.patch(`/reports/admin/${id}`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'reports', 'open'] }),
+  });
 
   const stats = statsQuery.data;
   const users = usersQuery.data ?? [];
@@ -79,11 +90,12 @@ export const AdminDashboardScreen: React.FC = () => {
       contentContainerStyle={s.container}
       refreshControl={
         <RefreshControl
-          refreshing={statsQuery.isRefetching || usersQuery.isRefetching}
+          refreshing={statsQuery.isRefetching || usersQuery.isRefetching || reportsQuery.isRefetching}
           onRefresh={() => {
             statsQuery.refetch();
             usersQuery.refetch();
             pendingVenuesQuery.refetch();
+            reportsQuery.refetch();
           }}
           tintColor={colors.primary[600]}
         />
@@ -117,6 +129,20 @@ export const AdminDashboardScreen: React.FC = () => {
             <View style={s.venueActions}>
               <Button title="Approve" size="sm" loading={verifyVenue.isPending} onPress={() => verifyVenue.mutate({ id: venue.id, status: 'APPROVED' })} />
               <Button title="Reject" size="sm" variant="outline" loading={verifyVenue.isPending} onPress={() => verifyVenue.mutate({ id: venue.id, status: 'REJECTED' })} />
+            </View>
+          </View>
+        </View>
+      ))}
+
+      <Text style={s.section}>Community reports ({reportsQuery.data?.length ?? 0})</Text>
+      {(reportsQuery.data ?? []).map((report) => (
+        <View key={report.id} style={s.userRow}>
+          <View style={s.userInfo}>
+            <Text style={s.userName}>{report.targetType} report · {report.targetId.slice(0, 8)}</Text>
+            <Text style={s.userEmail}>{report.reason}</Text>
+            <View style={s.venueActions}>
+              <Button title="Take action" size="sm" loading={resolveReport.isPending} onPress={() => resolveReport.mutate({ id: report.id, status: 'ACTIONED' })} />
+              <Button title="Dismiss" size="sm" variant="outline" loading={resolveReport.isPending} onPress={() => resolveReport.mutate({ id: report.id, status: 'DISMISSED' })} />
             </View>
           </View>
         </View>

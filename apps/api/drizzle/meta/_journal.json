@@ -15,6 +15,13 @@
       "when": 1793779200000,
       "tag": "0001_public_games",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793923200000,
+      "tag": "0002_reports_and_blocks",
+      "breakpoints": true
     }
   ]
 }

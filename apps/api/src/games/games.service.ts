@@ -1,15 +1,15 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, desc, eq, gte, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, lte, notInArray, or } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { gameParticipants, games } from "@/db/schema/games";
-import { users } from "@/db/schema/users";
+import { userBlocks, users } from "@/db/schema/users";
 import type { GameCreateInput, GameSearchInput } from "@playmate/validation";
 
 @Injectable()
 export class GamesService {
   constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
 
-  async search(filters: GameSearchInput) {
+  async search(filters: GameSearchInput, viewerId: string) {
     const conditions = [
       eq(games.visibility, "PUBLIC"),
       or(eq(games.status, "OPEN"), eq(games.status, "FULL"))!,
@@ -18,6 +18,8 @@ export class GamesService {
     if (filters.sportId) conditions.push(eq(games.sportId, filters.sportId));
     if (filters.from) conditions.push(gte(games.startsAt, new Date(filters.from)));
     if (filters.to) conditions.push(lte(games.startsAt, new Date(filters.to)));
+    const blockedUsers = await this.db.select({ id: userBlocks.blockedUserId }).from(userBlocks).where(eq(userBlocks.blockerId, viewerId));
+    if (blockedUsers.length) conditions.push(notInArray(games.hostId, blockedUsers.map((item) => item.id)));
     return this.db.select().from(games).where(and(...conditions)).orderBy(games.startsAt).limit(100);
   }
 
@@ -41,6 +43,15 @@ export class GamesService {
     return this.db.transaction(async (tx) => {
       const [game] = await tx.select().from(games).where(eq(games.id, gameId)).for("update").limit(1);
       if (!game || (game.status !== "OPEN" && game.status !== "FULL")) throw new NotFoundException("This game is no longer open to join");
+      const blocked = await tx.select().from(userBlocks).where(and(
+        eq(userBlocks.blockedUserId, game.hostId),
+        eq(userBlocks.blockerId, userId),
+      )).limit(1);
+      const hostBlockedPlayer = await tx.select().from(userBlocks).where(and(
+        eq(userBlocks.blockedUserId, userId),
+        eq(userBlocks.blockerId, game.hostId),
+      )).limit(1);
+      if (blocked.length || hostBlockedPlayer.length) throw new ForbiddenException("You cannot join this game because one player has blocked the other");
       if (game.visibility === "PRIVATE") throw new ForbiddenException("This game is invite only");
       if (game.hostId === userId) throw new BadRequestException("You are already hosting this game");
       const [existing] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId))).limit(1);

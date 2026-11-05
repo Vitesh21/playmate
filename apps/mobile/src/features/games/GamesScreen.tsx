@@ -22,6 +22,7 @@ import type { Sport, Venue } from '@playmate/types';
 
 type Game = {
   id: string;
+  hostId: string;
   title: string;
   notes?: string | null;
   startsAt: string;
@@ -239,6 +240,17 @@ export const GamesScreen: React.FC = () => {
                 <Text style={styles.detail}>{venue ? `${venue} · ` : ''}{item.maxPlayers} total players, including host · {item.costPerPlayer ? `₹${item.costPerPlayer} per player` : 'Free'}</Text>
                 {item.notes ? <Text style={styles.detail}>{item.notes}</Text> : null}
                 <Button title={item.status === 'FULL' ? 'Join waitlist' : item.instantJoin ? 'Join game' : 'Request to join'} onPress={() => join.mutate({ id: item.id })} loading={join.isPending} />
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  <Button title="Report game" variant="outline" onPress={() => Alert.alert('Report this game', 'Choose why you are reporting it.', [
+                    { text: 'Unsafe or abusive', onPress: () => { void apiClient.post('/reports', { targetType: 'GAME', targetId: item.id, targetUserId: item.hostId, reason: 'Unsafe or abusive game content' }).then(() => Alert.alert('Report sent', 'Our moderation team will review it.')).catch((error) => Alert.alert('Could not send report', explainError(error))); } },
+                    { text: 'Spam or misleading', onPress: () => { void apiClient.post('/reports', { targetType: 'GAME', targetId: item.id, targetUserId: item.hostId, reason: 'Spam or misleading game content' }).then(() => Alert.alert('Report sent', 'Our moderation team will review it.')).catch((error) => Alert.alert('Could not send report', explainError(error))); } },
+                    { text: 'Cancel', style: 'cancel' },
+                  ])} />
+                  <Button title="Block host" variant="outline" onPress={() => Alert.alert('Block this host?', 'Their public games will be hidden from you.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Block host', style: 'destructive', onPress: () => { void apiClient.post(`/users/${item.hostId}/block`, {}).then(() => { void queryClient.invalidateQueries({ queryKey: ['games'] }); Alert.alert('Host blocked', 'Their public games are now hidden from you.'); }).catch((error) => Alert.alert('Could not block host', explainError(error))); } },
+                  ])} />
+                </View>
               </View>
             );
           }}
