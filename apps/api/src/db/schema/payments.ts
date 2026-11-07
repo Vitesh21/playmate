@@ -47,6 +47,7 @@ export const paymentStatusEnum = pgEnum("payment_status", [ // Payment lifecycle
   "PAID", // Payment successfully captured and confirmed
   "FAILED", // Payment attempt rejected or errored
   "REFUNDED", // Previously PAID amount has been reversed/refunded
+  "PARTIALLY_REFUNDED",
 ]);
 
 export const paymentMethodEnum = pgEnum("payment_method", [ // Payment gateway/provider enum
@@ -58,7 +59,7 @@ export const payments = pgTable("payments", {
   userId: uuid("user_id") // FK to the user making the payment
     .notNull()
     .references(() => users.id),
-  amount: integer("amount").notNull(), // Payment amount in the smallest currency unit (e.g. paise)
+  amount: integer("amount").notNull(), // Payment amount in INR; converted to paise at the Razorpay boundary
   method: paymentMethodEnum("method").default("RAZORPAY").notNull(), // Gateway/provider used for this payment
   status: paymentStatusEnum("status").default("PENDING").notNull(), // Current processing status of the payment
   transactionId: text("transaction_id"), // Gateway-provided unique transaction ID (e.g. Razorpay payment_id)

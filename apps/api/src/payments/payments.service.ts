@@ -80,9 +80,13 @@ export class PaymentsService {
     }
 
     if (payment.status === "PAID") {
-      return this.resolveLinkedEntities(payment);
+      const [booking, order] = await Promise.all([
+        payment.bookingId ? this.bookingsService.findById(payment.bookingId) : Promise.resolve(undefined),
+        payment.orderId ? this.ordersService.findById(payment.orderId) : Promise.resolve(undefined),
+      ]);
+      return { payment, booking, order };
     }
-    if (payment.status === "REFUNDED") {
+    if (payment.status === "REFUNDED" || payment.status === "PARTIALLY_REFUNDED") {
       throw new ConflictException("This payment has already been refunded");
     }
 
@@ -207,9 +211,10 @@ export class PaymentsService {
       .limit(1);
 
     if (!payment) return { success: true, message: "Payment not found" };
-    if (payment.status === "REFUNDED") {
-      return { success: true, status: "REFUNDED", message: "Payment was already refunded" };
+    if (payment.status === "REFUNDED" || payment.status === "PARTIALLY_REFUNDED") {
+      return { success: true, status: payment.status, message: "Payment was already refunded" };
     }
+    if (payment.status === "PAID") return { success: true, status: "PAID", message: "Payment was already processed" };
 
     const isCapturedPayment = event === "payment.captured" &&
       entity.order_id === payment.transactionId &&

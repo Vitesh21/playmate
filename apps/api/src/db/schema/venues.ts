@@ -49,6 +49,7 @@ export const venues = pgTable("venues", {
   email: text("email"),                                  // Venue contact email address
   images: jsonb("images").$type<string[]>().default([]), // Ordered array of public image URLs showcasing the venue
   amenities: jsonb("amenities").$type<string[]>().default([]), // Array of amenity tags (e.g. "Parking", "AC", "Shower")
+  cancellationPolicy: jsonb("cancellation_policy").$type<{ freeCancellationHours: number; lateRefundPercentage: number }>().notNull().default({ freeCancellationHours: 24, lateRefundPercentage: 0 }),
   operatingHours: jsonb("operating_hours")               // Weekly operating schedule, one entry per day (0=Sun..6=Sat)
     .$type<
       Array<{

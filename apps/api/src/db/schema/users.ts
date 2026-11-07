@@ -49,6 +49,19 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
 });
 
+export const friendshipStatusEnum = pgEnum("friendship_status", ["PENDING", "ACCEPTED", "DECLINED"]);
+export const friendships = pgTable("friendships", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requesterId: uuid("requester_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  addresseeId: uuid("addressee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: friendshipStatusEnum("status").notNull().default("PENDING"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uniquePair: uniqueIndex("friendships_pair_unique").on(table.requesterId, table.addresseeId),
+  noSelfRequest: check("friendships_no_self", sql`${table.requesterId} <> ${table.addresseeId}`),
+}));
+
 export const userBlocks = pgTable("user_blocks", {
   id: uuid("id").primaryKey().defaultRandom(),
   blockerId: uuid("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -60,7 +73,7 @@ export const userBlocks = pgTable("user_blocks", {
 }));
 
 export const userReportStatusEnum = pgEnum("user_report_status", ["OPEN", "REVIEWED", "ACTIONED", "DISMISSED"]);
-export const userReportTargetEnum = pgEnum("user_report_target", ["USER", "GAME", "REVIEW"]);
+export const userReportTargetEnum = pgEnum("user_report_target", ["USER", "GAME", "REVIEW", "MESSAGE"]);
 
 export const userReports = pgTable("user_reports", {
   id: uuid("id").primaryKey().defaultRandom(),

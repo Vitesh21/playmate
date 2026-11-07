@@ -6,6 +6,7 @@ import { useAuthStore } from '@store/auth.store';
 import { roleBadgeVariant, roleLabel } from '@utils/index';
 import { UserRole } from '@playmate/types';
 import apiClient from '@shared/services/api';
+import { useNavigation } from '@react-navigation/native';
 
 const ROLE_BLURB: Record<string, string> = {
   [UserRole.ADMIN]:
@@ -22,6 +23,7 @@ export const ProfileScreen: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const navigation = useNavigation<any>();
   const deleteAccount = async () => {
     try {
       await apiClient.delete('/users/me');
@@ -75,6 +77,8 @@ export const ProfileScreen: React.FC = () => {
         <Text style={s.rowValue}>{roleLabel(user?.role)}</Text>
         <Text style={s.blurb}>{ROLE_BLURB[user?.role ?? UserRole.USER] ?? ''}</Text>
       </Card>
+
+      <Button title="Edit player profile and privacy" variant="outline" size="lg" fullWidth onPress={() => navigation.navigate('EditProfile')} />
 
       <Button
         title="Sign out"

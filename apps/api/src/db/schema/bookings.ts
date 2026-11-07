@@ -21,6 +21,8 @@ import {
   timestamp,
   uuid,
   integer,
+  uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 import { courtSlots } from "./court-slots";
@@ -45,7 +47,8 @@ export const bookings = pgTable("bookings", {
     .notNull()
     .references(() => courtSlots.id),
   status: bookingStatusEnum("status").default("PENDING").notNull(), // Current lifecycle state of this booking
-  totalAmount: integer("total_amount").notNull(),        // Final charged amount, in smallest currency unit (paise/cents)
+  totalAmount: integer("total_amount").notNull(),        // Charged amount in INR; converted to paise for Razorpay
+  refundAmount: integer("refund_amount").notNull().default(0),
   expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true }), // Cutoff time for PENDING bookings before auto-expiry
   paymentId: uuid("payment_id").references(() => payments.id), // FK to payments — the transaction that paid for this booking
   createdAt: timestamp("created_at", { mode: "date", withTimezone: true })  // Timestamp when booking record was created
@@ -55,6 +58,17 @@ export const bookings = pgTable("bookings", {
     .defaultNow()
     .notNull(),
 });
+
+export const bookingSlots = pgTable("booking_slots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookingId: uuid("booking_id").notNull().references(() => bookings.id, { onDelete: "cascade" }),
+  courtSlotId: uuid("court_slot_id").notNull().references(() => courtSlots.id),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uniqueBookingSlot: uniqueIndex("booking_slots_booking_slot_unique").on(table.bookingId, table.courtSlotId),
+  bookingLookup: index("booking_slots_booking_idx").on(table.bookingId),
+  slotLookup: index("booking_slots_slot_idx").on(table.courtSlotId),
+}));
 
 export type Booking = typeof bookings.$inferSelect;   // TypeScript type for a fully selected booking row
 export type NewBooking = typeof bookings.$inferInsert; // TypeScript type for an insert payload

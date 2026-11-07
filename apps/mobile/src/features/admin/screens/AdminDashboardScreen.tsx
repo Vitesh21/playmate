@@ -9,6 +9,7 @@ import { roleBadgeVariant, roleLabel } from '@utils/index';
 import { formatRelativeTime } from '@utils/index';
 import { Button } from '@components/ui';
 import { usePendingVenues, useVerifyVenue } from '../hooks/useAdmin';
+import { formatCurrency } from '@shared/utils/format';
 
 /** Admin-only dashboard: platform stats + every account and its role. */
 export const AdminDashboardScreen: React.FC = () => {
@@ -117,6 +118,35 @@ export const AdminDashboardScreen: React.FC = () => {
         <View style={s.statCard}>
           <Text style={s.statValue}>{stats?.sports.total ?? '—'}</Text>
           <Text style={s.statLabel}>Sports</Text>
+        </View>
+      </View>
+
+      <View style={[s.statsRow, { flexWrap: 'wrap' }]}>
+        <View style={s.statCard}>
+          <Text style={s.statValue}>{stats?.activeUsers30d ?? '—'}</Text>
+          <Text style={s.statLabel}>Active players · 30 days</Text>
+        </View>
+        <View style={s.statCard}>
+          <Text style={s.statValue}>{stats ? formatCurrency(stats.revenue.gmv) : '—'}</Text>
+          <Text style={s.statLabel}>GMV · before refunds</Text>
+        </View>
+        <View style={s.statCard}>
+          <Text style={s.statValue}>{stats ? `${stats.occupancy.fillRatePercent}%` : '—'}</Text>
+          <Text style={s.statLabel}>Upcoming slot fill rate</Text>
+        </View>
+      </View>
+      <View style={[s.statsRow, { flexWrap: 'wrap' }]}>
+        <View style={s.statCard}>
+          <Text style={s.statValue}>{stats?.bookings.total ?? '—'}</Text>
+          <Text style={s.statLabel}>Bookings · all statuses</Text>
+        </View>
+        <View style={s.statCard}>
+          <Text style={s.statValue}>{stats?.repeatCustomers ?? '—'}</Text>
+          <Text style={s.statLabel}>Repeat customers</Text>
+        </View>
+        <View style={s.statCard}>
+          <Text style={s.statValue}>{stats ? formatCurrency(stats.revenue.net) : '—'}</Text>
+          <Text style={s.statLabel}>Net collected after refunds</Text>
         </View>
       </View>
 

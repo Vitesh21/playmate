@@ -83,6 +83,8 @@ export function CreateVenueScreen() {
   const { data: sports } = useSports();
   const [sportId, setSportId] = useState<string | undefined>(undefined);
   const [sportError, setSportError] = useState<string | null>(null);
+  const [freeCancellationHours, setFreeCancellationHours] = useState(24);
+  const [lateRefundPercentage, setLateRefundPercentage] = useState(0);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([
     'Parking',
     'Drinking Water',
@@ -147,6 +149,7 @@ export function CreateVenueScreen() {
         phone: values.phone || null,
         images,
         amenities: selectedAmenities,
+        cancellationPolicy: { freeCancellationHours, lateRefundPercentage },
       },
       {
         onSuccess: (venue) => {
@@ -240,6 +243,18 @@ export function CreateVenueScreen() {
           placeholder="Detailed description of venue facilities and guidelines"
           multiline
         />
+
+        <Text style={s.section}>Cancellation & Refund Policy</Text>
+        <Text style={s.subtitle}>Players cancelling at least this far ahead receive a full refund.</Text>
+        <View style={s.chips}>
+          {[0, 12, 24, 48].map((hours) => <TouchableOpacity key={hours} style={[s.chip, freeCancellationHours === hours && s.chipActive]} onPress={() => setFreeCancellationHours(hours)}><Text style={[s.chipText, freeCancellationHours === hours && s.chipTextActive]}>{hours === 0 ? 'Always full refund' : `${hours}h before`}</Text></TouchableOpacity>)}
+        </View>
+        {freeCancellationHours > 0 ? <>
+          <Text style={s.subtitle}>Refund percentage for cancellations inside that window</Text>
+          <View style={s.chips}>
+            {[0, 50, 75].map((percent) => <TouchableOpacity key={percent} style={[s.chip, lateRefundPercentage === percent && s.chipActive]} onPress={() => setLateRefundPercentage(percent)}><Text style={[s.chipText, lateRefundPercentage === percent && s.chipTextActive]}>{percent}%</Text></TouchableOpacity>)}
+          </View>
+        </> : null}
 
         <Button
           title={createVenue.isPending ? 'Publishing Venue…' : 'Publish Venue to Database'}

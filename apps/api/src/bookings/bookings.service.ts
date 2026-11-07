@@ -53,10 +53,11 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { eq, and, inArray, desc, sql, or, gt, lt } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
-import { bookings, type NewBooking, bookingStatusEnum } from "@/db/schema/bookings";
+import { bookingSlots, bookings, type NewBooking, bookingStatusEnum } from "@/db/schema/bookings";
 import { courtSlots } from "@/db/schema/court-slots";
 import { courts } from "@/db/schema/courts";
 import { venues } from "@/db/schema/venues";
@@ -65,6 +66,26 @@ import type { BookingCreateInput, PaginationInput } from "@playmate/validation";
 import type { PaginatedResponse, BookingStatus, PaymentStatus } from "@playmate/types";
 import { RazorpayService } from "@/common/razorpay.service";
 import { config } from "@playmate/config";
+
+export function orderAndValidateConsecutiveSlots<T extends { courtId: string; date: string; startTime: string; endTime: string }>(slots: T[]): T[] {
+  if (slots.length < 1 || slots.length > 10) throw new BadRequestException("Choose between 1 and 10 slots");
+  const ordered = [...slots].sort((left, right) => left.date.localeCompare(right.date) || left.startTime.localeCompare(right.startTime));
+  const first = ordered[0]!;
+  if (ordered.some((slot) => slot.courtId !== first.courtId || slot.date !== first.date)) {
+    throw new BadRequestException("A multi-slot booking must use one court on one date");
+  }
+  if (ordered.some((slot, index) => index > 0 && ordered[index - 1]!.endTime !== slot.startTime)) {
+    throw new BadRequestException("Choose consecutive slots without gaps");
+  }
+  return ordered;
+}
+
+export function calculateCancellationRefund(totalAmount: number, hoursUntilStart: number, policy?: { freeCancellationHours: number; lateRefundPercentage: number }) {
+  if (hoursUntilStart <= 0) throw new BadRequestException("Bookings cannot be cancelled after their start time");
+  const effectivePolicy = policy ?? { freeCancellationHours: 24, lateRefundPercentage: 0 };
+  const refundPercent = hoursUntilStart >= effectivePolicy.freeCancellationHours ? 100 : effectivePolicy.lateRefundPercentage;
+  return { refundPercent, refundAmount: Math.round((totalAmount * refundPercent) / 100), policy: effectivePolicy };
+}
 
 @Injectable()
 export class BookingsService implements OnModuleInit, OnModuleDestroy {
@@ -117,12 +138,23 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       this.db.select({ value: sql<number>`count(*)` }).from(bookings).where(eq(bookings.userId, userId)),
     ]);
     const total = Number(totalObj?.value ?? 0);
+    const bookingIds = items.map(({ booking }) => booking.id);
+    const linkedSlots = bookingIds.length ? await this.db.select({ bookingId: bookingSlots.bookingId, courtSlot: courtSlots, court: courts, venue: venues })
+      .from(bookingSlots)
+      .innerJoin(courtSlots, eq(courtSlots.id, bookingSlots.courtSlotId))
+      .innerJoin(courts, eq(courts.id, courtSlots.courtId))
+      .innerJoin(venues, eq(venues.id, courts.venueId))
+      .orderBy(courtSlots.date, courtSlots.startTime)
+      .where(inArray(bookingSlots.bookingId, bookingIds)) : [];
+    const slotsByBooking = new Map<string, typeof linkedSlots>();
+    linkedSlots.forEach((row) => slotsByBooking.set(row.bookingId, [...(slotsByBooking.get(row.bookingId) ?? []), row]));
     return {
       items: items.map(({ booking, courtSlot, court, venue }) => ({
         ...booking,
         courtSlot,
         court,
         venue,
+        courtSlots: slotsByBooking.get(booking.id)?.map(({ courtSlot: linkedCourtSlot, court: linkedCourt, venue: linkedVenue }) => ({ courtSlot: linkedCourtSlot, court: linkedCourt, venue: linkedVenue })) ?? (courtSlot ? [{ courtSlot, court, venue }] : []),
       })),
       total,
       page,
@@ -169,24 +201,26 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
    */
   async create(userId: string, input: BookingCreateInput) {
     return this.db.transaction(async (tx) => {
-      // Step 1: atomically claim the slot (or fail fast)
-      const [slot] = await tx
+      const requestedSlotIds = input.courtSlotIds?.length ? input.courtSlotIds : input.courtSlotId ? [input.courtSlotId] : [];
+      if (!requestedSlotIds.length) throw new BadRequestException("Select at least one available slot");
+      if (new Set(requestedSlotIds).size !== requestedSlotIds.length) throw new BadRequestException("Choose each time slot only once");
+
+      // Lock every slot in a stable order so overlapping multi-slot checkouts cannot race.
+      const lockedSlots = await tx
         .select()
         .from(courtSlots)
         .where(
           and(
-            eq(courtSlots.id, input.courtSlotId),
+            inArray(courtSlots.id, requestedSlotIds),
             eq(courtSlots.isAvailable, true),
           ),
         )
-        .limit(1)
+        .orderBy(courtSlots.id)
         .for("update", { skipLocked: true });
 
-      // No row returned → either slot never existed, was already taken, or
-      // is currently being reserved by a concurrent tx. Same user-facing error.
-      if (!slot) {
-        throw new ConflictException("Slot is no longer available");
-      }
+      if (lockedSlots.length !== requestedSlotIds.length) throw new ConflictException("One or more selected slots are no longer available");
+      const slots = orderAndValidateConsecutiveSlots(lockedSlots);
+      const firstSlot = slots[0]!;
 
       // Step 2: compute the PENDING window. If the user doesn't complete
       // payment within this many minutes, the booking is auto-expired and
@@ -194,18 +228,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + config.booking.pendingExpiryMinutes);
 
-      const [activeBooking] = await tx
-        .select({ id: bookings.id })
-        .from(bookings)
-        .where(
-          and(
-            eq(bookings.courtSlotId, input.courtSlotId),
-            or(
-              eq(bookings.status, "CONFIRMED"),
-              and(eq(bookings.status, "PENDING"), gt(bookings.expiresAt, new Date())),
-            ),
-          ),
-        )
+      const [activeBooking] = await tx.select({ id: bookings.id }).from(bookings)
+        .leftJoin(bookingSlots, eq(bookingSlots.bookingId, bookings.id))
+        .where(and(
+          or(inArray(bookings.courtSlotId, requestedSlotIds), inArray(bookingSlots.courtSlotId, requestedSlotIds)),
+          or(eq(bookings.status, "CONFIRMED"), and(eq(bookings.status, "PENDING"), gt(bookings.expiresAt, new Date()))),
+        ))
         .limit(1);
 
       if (activeBooking) {
@@ -217,27 +245,30 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         .insert(bookings)
         .values({
           userId,
-          courtSlotId: input.courtSlotId,
+          courtSlotId: firstSlot.id,
           status: "PENDING" as BookingStatus,
-          totalAmount: slot.price, // Price comes from the slot row, not user input — never trust the client on pricing!
+          totalAmount: slots.reduce((total, slot) => total + slot.price, 0), // Prices come from the database, never the client.
           expiresAt,
         } satisfies NewBooking)
         .returning();
 
       if (!booking) throw new Error("Failed to create booking");
 
+      await tx.insert(bookingSlots).values(slots.map((slot) => ({ bookingId: booking.id, courtSlotId: slot.id })));
+      await tx.update(courtSlots).set({ isAvailable: false, updatedAt: new Date() }).where(inArray(courtSlots.id, requestedSlotIds));
+
       // Step 4: create Razorpay Order (payment intent).
       // Receipt format: "<prefix>_BKG_<shortBookingId>"
       // NOTE: ×100 because Razorpay takes PAISA (not whole INR rupees).
       const receipt = `${config.payments.receiptPrefix}_BKG_${booking.id.slice(0, 8)}`;
-      const rzpOrder = await this.razorpay.createOrder(slot.price * 100, receipt);
+      const rzpOrder = await this.razorpay.createOrder(booking.totalAmount * 100, receipt);
 
       // Step 5: write our local payments record, linked to the booking
       const [payment] = await tx
         .insert(payments)
         .values({
           userId,
-          amount: slot.price,
+          amount: booking.totalAmount,
           method: "RAZORPAY",
           status: "PENDING" as PaymentStatus,
           transactionId: rzpOrder.id, // store Razorpay's order_XXX id for later webhook matching
@@ -310,7 +341,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           .where(eq(payments.id, booking.paymentId));
       }
 
-      await this.syncSlotAvailability(tx, booking.courtSlotId);
+      await this.syncBookingAvailability(tx, booking);
 
       return updated;
     });
@@ -334,22 +365,72 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         .for("update");
 
       if (!booking) throw new NotFoundException("Booking not found");
-      // Terminal states → idempotent success, nothing to do
-      if (booking.status === "CANCELLED" || booking.status === "EXPIRED") return booking;
-      if (booking.status !== "PENDING") {
-        throw new BadRequestException("Confirmed bookings cannot be cancelled through this endpoint");
+      if (["CANCELLED", "EXPIRED", "REFUNDED"].includes(booking.status)) return booking;
+      if (booking.status !== "PENDING" && booking.status !== "CONFIRMED") throw new BadRequestException(`A booking in ${booking.status} state cannot be cancelled`);
+
+      let refundAmount = 0;
+      let refund: unknown;
+      let cancellationPercent = 0;
+      if (booking.status === "CONFIRMED") {
+        const [details] = await tx.select({ date: courtSlots.date, startTime: courtSlots.startTime, policy: venues.cancellationPolicy })
+          .from(courtSlots).innerJoin(courts, eq(courts.id, courtSlots.courtId)).innerJoin(venues, eq(venues.id, courts.venueId))
+          .where(eq(courtSlots.id, booking.courtSlotId)).limit(1);
+        if (!details) throw new NotFoundException("Venue booking details not found");
+        const startsAt = new Date(`${details.date}T${details.startTime}:00+05:30`);
+        const now = new Date();
+        const hoursUntilStart = (startsAt.getTime() - now.getTime()) / 3_600_000;
+        if (hoursUntilStart <= 0) throw new BadRequestException("Bookings cannot be cancelled after their start time");
+        const cancellation = calculateCancellationRefund(booking.totalAmount, hoursUntilStart, details.policy);
+        cancellationPercent = cancellation.refundPercent;
+        refundAmount = cancellation.refundAmount;
+
+        const [payment] = booking.paymentId ? await tx.select().from(payments).where(eq(payments.id, booking.paymentId)).limit(1) : [];
+        if (!payment || payment.status !== "PAID") throw new ServiceUnavailableException("The paid transaction could not be verified; contact support before cancelling");
+        if (refundAmount > 0) {
+          const gateway = payment.gatewayResponse && typeof payment.gatewayResponse === "object" ? payment.gatewayResponse as Record<string, any> : {};
+          const capturedPaymentId = gateway.razorpayPaymentId ?? gateway.payload?.payment?.entity?.id ?? gateway.payment?.entity?.id;
+          const isMock = payment.transactionId?.startsWith("order_mock_") || payment.transactionId?.startsWith("order_dev_") || gateway.verifiedVia === "mock-checkout";
+          if (isMock) {
+            if (process.env.NODE_ENV === "production") throw new ServiceUnavailableException("Mock transactions cannot be refunded in production");
+            refund = { id: `rfnd_mock_${payment.id}`, status: "processed", amount: refundAmount * 100, simulated: true };
+          } else {
+            if (!capturedPaymentId) throw new ServiceUnavailableException("The gateway payment reference is missing; support must review this refund");
+            refund = await this.razorpay.refundPayment(capturedPaymentId, refundAmount * 100, "booking_cancellation");
+          }
+          await tx.update(payments).set({
+            status: refundAmount >= booking.totalAmount ? "REFUNDED" as PaymentStatus : "PARTIALLY_REFUNDED" as PaymentStatus,
+            gatewayResponse: { ...gateway, cancellationRefund: refund, cancellationRefundAmount: refundAmount, cancellationRefundPercent: cancellationPercent },
+            updatedAt: new Date(),
+          }).where(eq(payments.id, payment.id));
+        }
+      } else if (booking.paymentId) {
+        await tx.update(payments).set({ status: "FAILED" as PaymentStatus, updatedAt: new Date() }).where(and(eq(payments.id, booking.paymentId), eq(payments.status, "PENDING")));
       }
 
       const [updated] = await tx
         .update(bookings)
-        .set({ status: "CANCELLED" as BookingStatus, updatedAt: new Date() })
+        .set({ status: refundAmount === booking.totalAmount && refundAmount > 0 ? "REFUNDED" as BookingStatus : "CANCELLED" as BookingStatus, refundAmount, updatedAt: new Date() })
         .where(eq(bookings.id, bookingId))
         .returning();
 
-      await this.syncSlotAvailability(tx, booking.courtSlotId);
+      await this.syncBookingAvailability(tx, booking);
 
-      return updated;
+      return { ...updated, cancellation: { refundAmount, refundPercent: cancellationPercent, refund } };
     });
+  }
+
+  async cancellationQuote(bookingId: string, userId: string) {
+    const [details] = await this.db.select({ booking: bookings, date: courtSlots.date, startTime: courtSlots.startTime, policy: venues.cancellationPolicy, venueName: venues.name })
+      .from(bookings).innerJoin(courtSlots, eq(courtSlots.id, bookings.courtSlotId))
+      .innerJoin(courts, eq(courts.id, courtSlots.courtId)).innerJoin(venues, eq(venues.id, courts.venueId))
+      .where(and(eq(bookings.id, bookingId), eq(bookings.userId, userId))).limit(1);
+    if (!details) throw new NotFoundException("Booking not found");
+    if (details.booking.status === "PENDING") return { bookingId, status: details.booking.status, venueName: details.venueName, refundAmount: 0, refundPercent: 0, message: "This booking is unpaid. Cancelling it releases the hold and no payment will be charged." };
+    if (details.booking.status !== "CONFIRMED") throw new BadRequestException(`A booking in ${details.booking.status} state cannot be cancelled`);
+    const startsAt = new Date(`${details.date}T${details.startTime}:00+05:30`);
+    const hoursUntilStart = (startsAt.getTime() - Date.now()) / 3_600_000;
+    const cancellation = calculateCancellationRefund(details.booking.totalAmount, hoursUntilStart, details.policy);
+    return { bookingId, status: details.booking.status, venueName: details.venueName, hoursUntilStart: Math.floor(hoursUntilStart), ...cancellation, totalAmount: details.booking.totalAmount, currency: "INR" };
   }
 
   /**
@@ -379,7 +460,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       // If any rows were expired, recalculate the backing slot flag.
       if (expired.length > 0) {
-        const slotIds = [...new Set(expired.map((b) => b.courtSlotId))];
+        const expiredIds = expired.map((booking) => booking.id);
+        const mappedSlots = await tx.select({ courtSlotId: bookingSlots.courtSlotId }).from(bookingSlots).where(inArray(bookingSlots.bookingId, expiredIds));
+        const slotIds = [...new Set([...expired.map((booking) => booking.courtSlotId), ...mappedSlots.map((row) => row.courtSlotId)])];
         for (const slotId of slotIds) {
           await this.syncSlotAvailability(tx, slotId);
         }
@@ -403,12 +486,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const [confirmedBooking] = await tx
       .select({ id: bookings.id })
       .from(bookings)
-      .where(
-        and(
-          eq(bookings.courtSlotId, courtSlotId),
-          eq(bookings.status, "CONFIRMED"),
-        ),
-      )
+      .leftJoin(bookingSlots, eq(bookingSlots.bookingId, bookings.id))
+      .where(and(or(eq(bookings.courtSlotId, courtSlotId), eq(bookingSlots.courtSlotId, courtSlotId)), eq(bookings.status, "CONFIRMED")))
       .limit(1);
 
     await tx
@@ -418,5 +497,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         updatedAt: new Date(),
       })
       .where(eq(courtSlots.id, courtSlotId));
+  }
+
+  private async syncBookingAvailability(tx: any, booking: typeof bookings.$inferSelect) {
+    const linked = await tx.select({ courtSlotId: bookingSlots.courtSlotId }).from(bookingSlots).where(eq(bookingSlots.bookingId, booking.id));
+    const slotIds = [...new Set([booking.courtSlotId, ...linked.map((row: { courtSlotId: string }) => row.courtSlotId)])];
+    for (const slotId of slotIds) await this.syncSlotAvailability(tx, slotId);
   }
 }

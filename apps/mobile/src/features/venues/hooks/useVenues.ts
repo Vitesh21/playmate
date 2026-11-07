@@ -13,7 +13,7 @@ import type { VenueSearchInput } from '@playmate/validation';
 const VENUE_KEYS = {
   all: ['venues'] as const,
   lists: () => [...VENUE_KEYS.all, 'list'] as const,
-  list: (filters: VenueSearchInput) => [...VENUE_KEYS.lists(), filters] as const,
+  list: (filters: VenueSearchInput & { page?: number; perPage?: number }) => [...VENUE_KEYS.lists(), filters] as const,
   details: () => [...VENUE_KEYS.all, 'detail'] as const,
   detail: (id: string) => [...VENUE_KEYS.details(), id] as const,
   courts: (venueId: string) => [...VENUE_KEYS.detail(venueId), 'courts'] as const,
@@ -36,7 +36,7 @@ export function useSports(options?: Omit<UseQueryOptions<Sport[]>, 'queryKey' | 
 }
 
 export function useVenues(
-  filters: VenueSearchInput = {},
+  filters: VenueSearchInput & { page?: number; perPage?: number } = {},
   options?: Omit<UseQueryOptions<PaginatedResponse<Venue>>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery<PaginatedResponse<Venue>>({
@@ -108,11 +108,8 @@ export function useCourtSlots(
 export function useCreateBooking() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { courtSlotId: string }) => {
-      const res = await apiClient.post<
-        ApiResponse<{ bookingId: string; paymentId: string; totalAmount: number }>,
-        { courtSlotId: string }
-      >('/bookings', data);
+    mutationFn: async (data: { courtSlotId: string } | { courtSlotIds: string[] }) => {
+      const res = await apiClient.post<ApiResponse<any>, typeof data>('/bookings', data);
       return res.data;
     },
     onSuccess: () => {
@@ -146,6 +143,7 @@ export type CreateVenuePayload = {
   phone?: string | null;
   images?: string[];
   amenities?: string[];
+  cancellationPolicy?: { freeCancellationHours: number; lateRefundPercentage: number };
 };
 
 /** Create a venue — VENUE_OWNER / ADMIN only (POST /venues). */
@@ -159,6 +157,44 @@ export function useCreateVenue() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: VENUE_KEYS.all });
     },
+  });
+}
+
+export function useUpdateVenue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; cancellationPolicy: NonNullable<CreateVenuePayload['cancellationPolicy']> }) => {
+      const res = await apiClient.patch<ApiResponse<Venue>, typeof data>(`/venues/${id}`, data);
+      return res.data;
+    },
+    onSuccess: (venue) => {
+      queryClient.invalidateQueries({ queryKey: VENUE_KEYS.all });
+      if (venue?.id) queryClient.invalidateQueries({ queryKey: VENUE_KEYS.detail(venue.id) });
+    },
+  });
+}
+
+export function useFavoriteVenues(options?: Omit<UseQueryOptions<Array<{ venue: Venue; favoritedAt: string }>>, 'queryKey' | 'queryFn'>) {
+  return useQuery<Array<{ venue: Venue; favoritedAt: string }>>({
+    queryKey: [...VENUE_KEYS.all, 'favorites'],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<Array<{ venue: Venue; favoritedAt: string }>>>('/venues/favorites');
+      return res.data ?? [];
+    },
+    ...options,
+  });
+}
+
+export function useToggleFavoriteVenue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ venueId, isFavorite }: { venueId: string; isFavorite: boolean }) => {
+      const request = isFavorite
+        ? apiClient.delete<ApiResponse<{ venueId: string; isFavorite: boolean }>>(`/venues/${venueId}/favorite`)
+        : apiClient.post<ApiResponse<{ venueId: string; isFavorite: boolean }>>(`/venues/${venueId}/favorite`);
+      return (await request).data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [...VENUE_KEYS.all, 'favorites'] }),
   });
 }
 
@@ -209,6 +245,19 @@ export function useBulkCreateSlots() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...VENUE_KEYS.all, 'slots'] });
     },
+  });
+}
+
+export function useSetCourtSlotAvailability() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ courtId, slotId, isAvailable }: { courtId: string; slotId: string; isAvailable: boolean }) => {
+      const res = await apiClient.patch<ApiResponse<CourtSlot>, { isAvailable: boolean }>(
+        `/courts/${courtId}/slots/${slotId}/availability`, { isAvailable },
+      );
+      return res.data;
+    },
+    onSuccess: (_data, variables) => queryClient.invalidateQueries({ queryKey: [...VENUE_KEYS.all, 'slots', variables.courtId] }),
   });
 }
 

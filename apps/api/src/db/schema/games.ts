@@ -1,13 +1,17 @@
 import {
   boolean,
   integer,
+  index,
   pgEnum,
   pgTable,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
   uuid,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 import { venues } from "./venues";
 import { sports } from "./sports";
@@ -16,6 +20,8 @@ export const gameVisibilityEnum = pgEnum("game_visibility", ["PUBLIC", "PRIVATE"
 export const gameStatusEnum = pgEnum("game_status", ["OPEN", "FULL", "CANCELLED", "COMPLETED"]);
 export const gameJoinStatusEnum = pgEnum("game_join_status", ["REQUESTED", "APPROVED", "DECLINED", "WAITLISTED", "LEFT"]);
 export const gameInviteStatusEnum = pgEnum("game_invite_status", ["PENDING", "ACCEPTED", "DECLINED", "CANCELLED"]);
+export const gameParticipantRoleEnum = pgEnum("game_participant_role", ["HOST", "COHOST", "PLAYER"]);
+export const gameAttendanceEnum = pgEnum("game_attendance", ["PRESENT", "NO_SHOW"]);
 
 export const games = pgTable("games", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -42,10 +48,32 @@ export const gameParticipants = pgTable("game_participants", {
   gameId: uuid("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: gameJoinStatusEnum("status").notNull().default("REQUESTED"),
+  role: gameParticipantRoleEnum("role").notNull().default("PLAYER"),
+  attendance: gameAttendanceEnum("attendance"),
   message: text("message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({ uniqueGameUser: uniqueIndex("game_participants_game_user_unique").on(table.gameId, table.userId) }));
+
+export const gameRatings = pgTable("game_ratings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  gameId: uuid("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
+  raterId: uuid("rater_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  ratedUserId: uuid("rated_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  skill: smallint("skill").notNull(),
+  sportsmanship: smallint("sportsmanship").notNull(),
+  punctuality: smallint("punctuality").notNull(),
+  hostRating: smallint("host_rating"),
+  comment: text("comment"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  uniqueRaterTarget: uniqueIndex("game_ratings_rater_target_unique").on(table.gameId, table.raterId, table.ratedUserId),
+  ratingRange: check("game_ratings_range_check", sql`${table.skill} between 1 and 5 and ${table.sportsmanship} between 1 and 5 and ${table.punctuality} between 1 and 5`),
+  hostRatingRange: check("game_ratings_host_range_check", sql`${table.hostRating} is null or ${table.hostRating} between 1 and 5`),
+  noSelfRating: check("game_ratings_no_self_check", sql`${table.raterId} <> ${table.ratedUserId}`),
+  ratedUserIndex: index("game_ratings_rated_user_idx").on(table.ratedUserId),
+}));
 
 export const gameInvites = pgTable("game_invites", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -57,5 +85,7 @@ export const gameInvites = pgTable("game_invites", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  uniqueGameInvite: uniqueIndex("game_invites_unique").on(table.gameId, table.inviteeId),
+  uniqueGameInvitee: uniqueIndex("game_invites_unique").on(table.gameId, table.inviteeId),
+  inviteeStatus: index("game_invites_invitee_status_idx").on(table.inviteeId, table.status),
+  noSelfInvite: check("game_invites_no_self", sql`${table.inviterId} <> ${table.inviteeId}`),
 }));

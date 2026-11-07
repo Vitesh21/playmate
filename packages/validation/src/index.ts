@@ -37,6 +37,11 @@ const operatingHoursSchema = z.object({
   isClosed: z.boolean().default(false),
 });
 
+export const cancellationPolicySchema = z.object({
+  freeCancellationHours: z.number().int().min(0).max(720).default(24),
+  lateRefundPercentage: z.number().int().min(0).max(100).default(0),
+}).default({ freeCancellationHours: 24, lateRefundPercentage: 0 });
+
 export const venueCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   slug: z.string().min(1, "Slug is required"),
@@ -53,6 +58,7 @@ export const venueCreateSchema = z.object({
   images: z.array(z.string().url("Invalid image URL")).default([]),
   amenities: z.array(z.string()).default([]),
   operatingHours: z.array(operatingHoursSchema).default([]),
+  cancellationPolicy: cancellationPolicySchema,
   isActive: z.boolean().default(true),
   ownerId: z.string().uuid("Invalid owner ID").optional().nullable(),
 });
@@ -75,6 +81,14 @@ export const venueSearchSchema = z.object({
     .optional(),
   amenities: z.string().optional(),
   search: z.string().optional(),
+  courtType: z.enum(["INDOOR", "OUTDOOR"]).optional(),
+  surface: z.string().max(80).optional(),
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+  radiusKm: z.coerce.number().positive().max(200).optional(),
+  availableNow: z.coerce.boolean().optional(),
+  utcOffsetMinutes: z.coerce.number().int().min(-720).max(840).optional(),
 });
 
 export const courtCreateSchema = z.object({
@@ -100,8 +114,10 @@ export const courtSlotCreateSchema = z.object({
 });
 
 export const bookingCreateSchema = z.object({
-  courtSlotId: z.string().uuid("Invalid slot ID"),
-});
+  courtSlotId: z.string().uuid("Invalid slot ID").optional(),
+  courtSlotIds: z.array(z.string().uuid("Invalid slot ID")).min(2).max(10)
+    .refine((ids) => new Set(ids).size === ids.length, "A slot can only be selected once").optional(),
+}).strict().refine((input) => Boolean(input.courtSlotId) !== Boolean(input.courtSlotIds), "Provide one slot or a list of multiple slots");
 
 export const gameCreateSchema = z.object({
   sportId: z.string().uuid(),
@@ -122,6 +138,15 @@ export const gameSearchSchema = z.object({
   sportId: z.string().uuid().optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
+});
+
+export const gameRatingCreateSchema = z.object({
+  ratedUserId: z.string().uuid(),
+  skill: z.number().int().min(1).max(5),
+  sportsmanship: z.number().int().min(1).max(5),
+  punctuality: z.number().int().min(1).max(5),
+  hostRating: z.number().int().min(1).max(5).optional(),
+  comment: z.string().trim().max(500).optional().nullable(),
 });
 
 export const categoryCreateSchema = z.object({
@@ -328,6 +353,7 @@ export type CourtSlotCreateInput = z.infer<typeof courtSlotCreateSchema>;
 export type BookingCreateInput = z.infer<typeof bookingCreateSchema>;
 export type GameCreateInput = z.infer<typeof gameCreateSchema>;
 export type GameSearchInput = z.infer<typeof gameSearchSchema>;
+export type GameRatingCreateInput = z.infer<typeof gameRatingCreateSchema>;
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>;
 export type CategoryUpdateInput = z.infer<typeof categoryUpdateSchema>;
 export type ProductCreateInput = z.infer<typeof productCreateSchema>;

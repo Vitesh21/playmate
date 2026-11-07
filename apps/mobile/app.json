@@ -21,7 +21,13 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Playmate uses your location to find nearby sports venues."
+        }
+      ]
     ]
   }
 }

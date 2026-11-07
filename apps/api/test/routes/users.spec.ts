@@ -9,6 +9,9 @@ const mockFindById = jest.fn();
 const mockFindAll = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
+const mockGetMyProfile = jest.fn();
+const mockUpdateMyProfile = jest.fn();
+const mockPublicProfile = jest.fn();
 
 jest.mock("@/users/users.service", () => ({
   UsersService: jest.fn().mockImplementation(() => ({
@@ -16,6 +19,9 @@ jest.mock("@/users/users.service", () => ({
     findAll: mockFindAll,
     update: mockUpdate,
     remove: mockRemove,
+    getMyProfile: mockGetMyProfile,
+    updateMyProfile: mockUpdateMyProfile,
+    publicProfile: mockPublicProfile,
   })),
 }));
 
@@ -42,6 +48,30 @@ describe("Users routes (e2e)", () => {
     expect(response.status).toBe(200);
     expect(response.text).toContain("Delete your Playmate account");
     expect(response.text).toContain("/users/me");
+  });
+
+  it("returns and updates the authenticated player's extended profile", async () => {
+    mockGetMyProfile.mockResolvedValue({ id: VALID_USER.id, profile: { bio: "Badminton fan" } });
+    mockUpdateMyProfile.mockResolvedValue({ id: VALID_USER.id, profile: { bio: "Badminton fan" } });
+    const get = await request(app.getHttpServer()).get("/users/me/profile").set(authBearer(VALID_USER));
+    const update = await request(app.getHttpServer()).patch("/users/me/profile").set(authBearer(VALID_USER)).send({ bio: "Badminton fan" });
+    expect(get.status).toBe(200);
+    expect(update.status).toBe(200);
+    expect(mockUpdateMyProfile).toHaveBeenCalledWith(VALID_USER.id, { bio: "Badminton fan" });
+  });
+
+  it("validates profile privacy and skill values", async () => {
+    const response = await request(app.getHttpServer()).patch("/users/me/profile").set(authBearer(VALID_USER)).send({ privacy: { profileVisibility: "EVERYONE" } });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(mockUpdateMyProfile).not.toHaveBeenCalled();
+  });
+
+  it("serves the privacy-filtered player profile route", async () => {
+    mockPublicProfile.mockResolvedValue({ id: VALID_ADMIN.id, firstName: "Rally", visibility: "PUBLIC" });
+    const response = await request(app.getHttpServer()).get(`/users/${VALID_ADMIN.id}/public-profile`).set(authBearer(VALID_USER));
+    expect(response.status).toBe(200);
+    expect(response.body.data.visibility).toBe("PUBLIC");
+    expect(mockPublicProfile).toHaveBeenCalledWith(VALID_ADMIN.id, VALID_USER.id);
   });
 
   it("does not allow a user to read another user's profile", async () => {

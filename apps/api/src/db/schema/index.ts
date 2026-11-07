@@ -18,3 +18,5 @@ export * from "./payments";
 export * from "./reviews";
 export * from "./notifications";
 export * from "./games";
+export * from "./community";
+export * from "./venue-favorites";

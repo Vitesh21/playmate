@@ -7,19 +7,32 @@ import { userUpdateSchema } from "@playmate/validation";
 import { UserRole } from "@playmate/types";
 import { AuthGuard, RolesGuard } from "@/common/auth.guard";
 
-export class UpdateUserDto extends createZodDto(userUpdateSchema) {}
-const playerProfileSchema = z.object({
-  bio: z.string().max(500).nullable().optional(),
-  homeCity: z.string().max(80).nullable().optional(),
-  homeState: z.string().max(80).nullable().optional(),
+const legacyProfileSchema = z.object({
+  firstName: z.string().trim().min(1).max(80).optional(),
+  lastName: z.string().trim().max(80).optional(),
+  avatarUrl: z.string().url().max(500).optional(),
+  bio: z.string().trim().max(500).optional(),
   preferredSports: z.array(z.string().uuid()).max(30).optional(),
-  skillLevels: z.record(z.string().uuid(), z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED", "PRO"])).optional(),
+  skillLevels: z.record(z.string().uuid(), z.enum(["BEGINNER", "RECREATIONAL", "INTERMEDIATE", "ADVANCED", "COMPETITIVE", "PRO"])).optional(),
+  preferredTimes: z.array(z.enum(["MORNING", "AFTERNOON", "EVENING", "NIGHT"])).max(20).optional(),
+  homeLocation: z.object({ area: z.string().trim().max(100), city: z.string().trim().max(100) }).optional(),
+  privacy: z.object({ profileVisibility: z.enum(["PUBLIC", "PLAYPALS", "PRIVATE"]).optional(), showGames: z.boolean().optional(), showCalendar: z.boolean().optional(), showHomeArea: z.boolean().optional() }).optional(),
+});
+
+const normalizedProfileSchema = z.object({
+  bio: z.string().max(500).nullable().optional(),
+  homeCity: z.string().max(100).nullable().optional(),
+  homeState: z.string().max(100).nullable().optional(),
+  preferredSports: z.array(z.string().uuid()).max(30).optional(),
+  skillLevels: z.record(z.string().uuid(), z.enum(["BEGINNER", "RECREATIONAL", "INTERMEDIATE", "ADVANCED", "COMPETITIVE", "PRO"])).optional(),
   preferredTimes: z.array(z.string().min(1).max(40)).max(20).optional(),
-  profileVisibility: z.enum(["PUBLIC", "FRIENDS", "PRIVATE"]).optional(),
+  profileVisibility: z.enum(["PUBLIC", "FRIENDS", "PLAYPALS", "PRIVATE"]).optional(),
   gamesVisibility: z.enum(["PUBLIC", "FRIENDS", "PRIVATE"]).optional(),
   calendarVisibility: z.enum(["PUBLIC", "FRIENDS", "PRIVATE"]).optional(),
 }).strict();
-export class UpdatePlayerProfileDto extends createZodDto(playerProfileSchema) {}
+
+export class UpdateUserDto extends createZodDto(userUpdateSchema) {}
+export class UpdatePlayerProfileDto extends createZodDto(normalizedProfileSchema) {}
 
 @ApiTags("Users")
 @Controller("users")
@@ -31,8 +44,23 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "List all users" })
   async findAll() {
-    const data = await this.usersService.findAll();
-    return { success: true, data };
+    return { success: true, data: await this.usersService.findAll() };
+  }
+
+  @Get("me/profile")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get the current player's extended profile" })
+  async myProfile(@Req() req: any) {
+    return { success: true, data: await this.usersService.getMyProfile(req.user.id) };
+  }
+
+  @Patch("me/profile")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update sports profile and privacy preferences" })
+  async updateMyProfile(@Req() req: any, @Body() body: unknown) {
+    return { success: true, data: await this.usersService.updateMyProfile(req.user.id, legacyProfileSchema.parse(body)) };
   }
 
   @Get("me/player-profile")
@@ -46,15 +74,15 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   async updateMyPlayerProfile(@Req() req: any, @Body() body: UpdatePlayerProfileDto) {
-    const input = playerProfileSchema.parse(body);
-    return { success: true, data: await this.usersService.updatePlayerProfile(req.user.id, input) };
+    return { success: true, data: await this.usersService.updatePlayerProfile(req.user.id, normalizedProfileSchema.parse(body)) };
   }
 
   @Get(":id/public-profile")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
-  async getPublicProfile(@Req() req: any, @Param("id") id: string) {
-    return { success: true, data: await this.usersService.getPublicPlayerProfile(req.user.id, id) };
+  @ApiOperation({ summary: "Get a player's privacy-filtered public profile" })
+  async publicProfile(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.usersService.publicProfile(id, req.user.id) };
   }
 
   @Get(":id")
@@ -63,11 +91,8 @@ export class UsersController {
   @ApiOperation({ summary: "Get user by ID" })
   @ApiParam({ name: "id", description: "User UUID" })
   async findOne(@Req() req: any, @Param("id") id: string) {
-    if (req.user.id !== id && req.user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException("You can only view your own profile");
-    }
-    const data = await this.usersService.findById(id);
-    return { success: true, data };
+    if (req.user.id !== id && req.user.role !== UserRole.ADMIN) throw new ForbiddenException("You can only view your own profile");
+    return { success: true, data: await this.usersService.findById(id) };
   }
 
   @Patch("me")
@@ -75,9 +100,7 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Update user profile" })
   async update(@Req() req: any, @Body() body: UpdateUserDto) {
-    const data = userUpdateSchema.parse(body);
-    const user = await this.usersService.update(req.user.id, data);
-    return { success: true, data: user };
+    return { success: true, data: await this.usersService.update(req.user.id, userUpdateSchema.parse(body)) };
   }
 
   @Post(":id/block")

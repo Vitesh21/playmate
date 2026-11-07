@@ -1,20 +1,31 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   RefreshControl,
+  TextInput,
+  Pressable,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
+import MapView, { Marker, type Region } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@theme/index';
-import { useSports, useVenues, VenueCard } from '@features/venues';
+import { useSports, useVenues, useFavoriteVenues, useToggleFavoriteVenue, VenueCard } from '@features/venues';
 import { Button, EmptyState, ErrorState, LoadingState } from '@components/ui';
 import { useAuthStore } from '@store/auth.store';
 import type { HomeStackParamList } from '@navigation/types';
 import type { Sport, Venue } from '@playmate/types';
+
+function localDateString(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
 /**
  * Home / "Play" tab — lists bookable venues from the API with a sport filter.
@@ -23,14 +34,87 @@ export const HomeScreen: React.FC = () => {
   const { colors, spacing, radius, typography } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const user = useAuthStore((s) => s.user);
+  const mapRef = useRef<MapView>(null);
 
   const [sportId, setSportId] = useState<string | undefined>(undefined);
+  const [searchText, setSearchText] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [courtType, setCourtType] = useState<'INDOOR' | 'OUTDOOR' | undefined>();
+  const [amenity, setAmenity] = useState<string | undefined>();
+  const [minRating, setMinRating] = useState<number | undefined>();
+  const [availableNow, setAvailableNow] = useState(false);
+  const [surface, setSurface] = useState<string | undefined>();
+  const [searchDate, setSearchDate] = useState<string | undefined>();
+  const [timeWindow, setTimeWindow] = useState<'morning' | 'afternoon' | 'evening' | undefined>();
+  const [showMap, setShowMap] = useState(false);
+  const [mapRegion, setMapRegion] = useState<Region>({ latitude: 20.5937, longitude: 78.9629, latitudeDelta: 20, longitudeDelta: 20 });
+  const [hasMapMoved, setHasMapMoved] = useState(false);
+  const [searchArea, setSearchArea] = useState<{ latitude: number; longitude: number; radiusKm: number } | undefined>();
+  const [selectedMapVenue, setSelectedMapVenue] = useState<Venue | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
 
   const sportsQuery = useSports();
-  const venuesQuery = useVenues({ sportId });
+  const venuesQuery = useVenues({
+    sportId,
+    search: searchText.trim() || undefined,
+    minPrice: minPrice ? Number(minPrice) : undefined,
+    maxPrice: maxPrice ? Number(maxPrice) : undefined,
+    courtType,
+    surface,
+    date: searchDate ?? (timeWindow ? localDateString(new Date()) : undefined),
+    startTime: timeWindow === 'morning' ? '06:00' : timeWindow === 'afternoon' ? '12:00' : timeWindow === 'evening' ? '17:00' : undefined,
+    endTime: timeWindow === 'morning' ? '12:00' : timeWindow === 'afternoon' ? '17:00' : timeWindow === 'evening' ? '23:00' : undefined,
+    amenities: amenity,
+    utcOffsetMinutes: -new Date().getTimezoneOffset(),
+    minRating,
+    availableNow: availableNow || undefined,
+    latitude: searchArea?.latitude,
+    longitude: searchArea?.longitude,
+    radiusKm: searchArea?.radiusKm,
+    perPage: showMap ? 100 : undefined,
+  });
+  const favoritesQuery = useFavoriteVenues();
+  const toggleFavorite = useToggleFavoriteVenue();
 
   const sports: Sport[] = sportsQuery.data ?? [];
-  const venues: Venue[] = venuesQuery.data?.items ?? [];
+  const favoriteEntries = favoritesQuery.data ?? [];
+  const favoriteIds = new Set(favoriteEntries.map(({ venue }) => venue.id));
+  const venues: Venue[] = showFavorites
+    ? favoriteEntries.map(({ venue }) => venue)
+    : venuesQuery.data?.items ?? [];
+
+  useEffect(() => {
+    if (hasMapMoved || !venues.length) return;
+    const firstLocatedVenue = venues.find((venue) => Number.isFinite(Number(venue.latitude)) && Number.isFinite(Number(venue.longitude)) && venue.latitude != null && venue.longitude != null);
+    if (firstLocatedVenue) {
+      setMapRegion({ latitude: Number(firstLocatedVenue.latitude), longitude: Number(firstLocatedVenue.longitude), latitudeDelta: 0.18, longitudeDelta: 0.18 });
+    }
+  }, [venues, hasMapMoved]);
+
+  const mapMarkers = useMemo(() => {
+    const cellLat = Math.max(mapRegion.latitudeDelta / 12, 0.004);
+    const cellLng = Math.max(mapRegion.longitudeDelta / 12, 0.004);
+    const groups = new Map<string, Venue[]>();
+    for (const venue of venues) {
+      if (venue.latitude == null || venue.longitude == null) continue;
+      const latitude = Number(venue.latitude);
+      const longitude = Number(venue.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+      const key = `${Math.floor(latitude / cellLat)}:${Math.floor(longitude / cellLng)}`;
+      groups.set(key, [...(groups.get(key) ?? []), venue]);
+    }
+    return [...groups.values()].map((group) => ({
+      venues: group,
+      coordinate: {
+        latitude: group.reduce((sum, venue) => sum + Number(venue.latitude), 0) / group.length,
+        longitude: group.reduce((sum, venue) => sum + Number(venue.longitude), 0) / group.length,
+      },
+    }));
+  }, [venues, mapRegion.latitudeDelta, mapRegion.longitudeDelta]);
 
   const sportNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -63,6 +147,34 @@ export const HomeScreen: React.FC = () => {
     },
     row: { paddingHorizontal: spacing.lg },
     centered: { paddingTop: spacing.xxxxl },
+    searchField: { borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.background.primary, color: colors.text.primary, marginTop: spacing.md, fontSize: 16 },
+    filterBar: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, alignItems: 'center' },
+    filterToggle: { borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+    filterText: { ...typography.caption, color: colors.text.primary, fontWeight: '700' },
+    filterPanel: { marginTop: spacing.sm, padding: spacing.md, gap: spacing.sm, borderRadius: radius.md, backgroundColor: colors.background.primary, borderWidth: 1, borderColor: colors.border.light },
+    filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    filterChip: { borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+    filterChipActive: { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+    priceRow: { flexDirection: 'row', gap: spacing.sm },
+    priceField: { flex: 1, borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, color: colors.text.primary, backgroundColor: colors.background.primary },
+    favoriteToggle: { alignSelf: 'flex-end', marginTop: -spacing.sm, marginBottom: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.full, backgroundColor: colors.background.primary, borderWidth: 1, borderColor: colors.border.light },
+    favoriteToggleText: { ...typography.caption, color: colors.primary[700], fontWeight: '700' },
+    mapActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+    mapAction: { flex: 1, borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.background.primary },
+    mapActionActive: { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+    mapActionText: { ...typography.caption, color: colors.text.primary, fontWeight: '700' },
+    mapOverlayActions: { position: 'absolute', top: spacing.md, left: spacing.md, right: spacing.md, flexDirection: 'row', gap: spacing.sm },
+    mapPill: { backgroundColor: colors.background.primary, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border.light, elevation: 3 },
+    mapPillText: { ...typography.caption, color: colors.text.primary, fontWeight: '700' },
+    mapBottom: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, gap: spacing.sm },
+    mapPreview: { backgroundColor: colors.background.primary, borderRadius: radius.lg, padding: spacing.md, flexDirection: 'row', gap: spacing.md, elevation: 5 },
+    mapPreviewImage: { width: 76, height: 76, borderRadius: radius.md, backgroundColor: colors.background.secondary },
+    mapPreviewInfo: { flex: 1, justifyContent: 'center', gap: spacing.xxs },
+    mapVenueName: { ...typography.subtitle2, color: colors.text.primary },
+    mapMeta: { ...typography.caption, color: colors.text.secondary },
+    mapError: { ...typography.caption, color: colors.error[600], backgroundColor: colors.background.primary, padding: spacing.sm, borderRadius: radius.md },
+    cluster: { minWidth: 38, height: 38, borderRadius: radius.full, paddingHorizontal: spacing.xs, backgroundColor: colors.primary[600], borderWidth: 2, borderColor: colors.background.primary, alignItems: 'center', justifyContent: 'center' },
+    clusterText: { ...typography.caption, color: colors.text.inverse, fontWeight: '800' },
   });
 
   const renderHeader = () => (
@@ -72,8 +184,63 @@ export const HomeScreen: React.FC = () => {
           {user?.firstName ? `Hey ${user.firstName}` : 'Find your next game'}
         </Text>
         <Text style={s.subtitle}>Book a court, we&apos;ll bring the gear.</Text>
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: !showFavorites }} style={[s.filterToggle, !showFavorites && s.chipActive]} onPress={() => setShowFavorites(false)}><Text style={s.filterText}>Explore venues</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: showFavorites }} style={[s.filterToggle, showFavorites && s.chipActive]} onPress={() => setShowFavorites(true)}><Text style={s.filterText}>♥ Saved ({favoriteEntries.length})</Text></Pressable>
+        </View>
+        <View style={s.mapActions}>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: !showMap }} style={[s.mapAction, !showMap && s.mapActionActive]} onPress={() => setShowMap(false)}><Text style={s.mapActionText}>List</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: showMap }} style={[s.mapAction, showMap && s.mapActionActive]} onPress={() => setShowMap(true)}><Text style={s.mapActionText}>Map</Text></Pressable>
+        </View>
+        <TextInput
+          accessibilityLabel="Search venues or city"
+          style={s.searchField}
+          placeholder="Search venues or city"
+          placeholderTextColor={colors.text.tertiary}
+          value={searchText}
+          onChangeText={setSearchText}
+          returnKeyType="search"
+        />
+        <View style={s.filterBar}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFilters }} style={s.filterToggle} onPress={() => setShowFilters((value) => !value)}>
+            <Text style={s.filterText}>{showFilters ? 'Hide filters' : 'Filters'}</Text>
+          </Pressable>
+          {(courtType || surface || amenity || minPrice || maxPrice || minRating || availableNow || searchDate || timeWindow) ? <Pressable accessibilityRole="button" onPress={() => { setCourtType(undefined); setSurface(undefined); setAmenity(undefined); setMinPrice(''); setMaxPrice(''); setMinRating(undefined); setAvailableNow(false); setSearchDate(undefined); setTimeWindow(undefined); }}><Text style={s.filterText}>Clear filters</Text></Pressable> : null}
+        </View>
+        {showFilters ? <View style={s.filterPanel}>
+          <Text style={s.filterText}>Hourly price (₹)</Text>
+          <View style={s.priceRow}>
+            <TextInput accessibilityLabel="Minimum hourly price" style={s.priceField} keyboardType="number-pad" placeholder="Min" placeholderTextColor={colors.text.tertiary} value={minPrice} onChangeText={setMinPrice} />
+            <TextInput accessibilityLabel="Maximum hourly price" style={s.priceField} keyboardType="number-pad" placeholder="Max" placeholderTextColor={colors.text.tertiary} value={maxPrice} onChangeText={setMaxPrice} />
+          </View>
+          <Text style={s.filterText}>Court type</Text>
+          <View style={s.filterRow}>{(['INDOOR', 'OUTDOOR'] as const).map((type) => <Pressable key={type} accessibilityRole="button" accessibilityState={{ selected: courtType === type }} style={[s.filterChip, courtType === type && s.filterChipActive]} onPress={() => setCourtType(courtType === type ? undefined : type)}><Text style={s.filterText}>{type === 'INDOOR' ? 'Indoor' : 'Outdoor'}</Text></Pressable>)}</View>
+          <Text style={s.filterText}>Surface</Text>
+          <View style={s.filterRow}>{['wood', 'synthetic turf', 'clay', 'concrete'].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: surface === value }} style={[s.filterChip, surface === value && s.filterChipActive]} onPress={() => setSurface(surface === value ? undefined : value)}><Text style={s.filterText}>{value.replace(/\b\w/g, (character) => character.toUpperCase())}</Text></Pressable>)}</View>
+          <Text style={s.filterText}>Day and time</Text>
+          <View style={s.filterRow}>
+            {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+              const day = new Date();
+              day.setDate(day.getDate() + offset);
+              const value = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+              const label = offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : day.toLocaleDateString(undefined, { weekday: 'short' });
+              return <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: searchDate === value }} style={[s.filterChip, searchDate === value && s.filterChipActive]} onPress={() => setSearchDate(searchDate === value ? undefined : value)}><Text style={s.filterText}>{label}</Text></Pressable>;
+            })}
+          </View>
+          <View style={s.filterRow}>{([['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: timeWindow === value }} style={[s.filterChip, timeWindow === value && s.filterChipActive]} onPress={() => setTimeWindow(timeWindow === value ? undefined : value)}><Text style={s.filterText}>{label}</Text></Pressable>)}</View>
+          <Text style={s.filterText}>Availability and rating</Text>
+          <View style={s.filterRow}>
+            <Pressable accessibilityRole="button" accessibilityState={{ selected: availableNow }} style={[s.filterChip, availableNow && s.filterChipActive]} onPress={() => setAvailableNow((value) => !value)}><Text style={s.filterText}>Available now</Text></Pressable>
+            {[4, 4.5].map((rating) => <Pressable key={rating} accessibilityRole="button" accessibilityState={{ selected: minRating === rating }} style={[s.filterChip, minRating === rating && s.filterChipActive]} onPress={() => setMinRating(minRating === rating ? undefined : rating)}><Text style={s.filterText}>{rating}+ ★</Text></Pressable>)}
+          </View>
+          <Text style={s.filterText}>Amenities</Text>
+          <View style={s.filterRow}>{['Parking', 'Washroom', 'Lights', 'Equipment rental', 'Changing rooms'].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: amenity === value }} style={[s.filterChip, amenity === value && s.filterChipActive]} onPress={() => setAmenity(amenity === value ? undefined : value)}><Text style={s.filterText}>{value}</Text></Pressable>)}</View>
+        </View> : null}
         <View style={{ marginTop: spacing.md }}>
           <Button title="Find or host a game" variant="outline" onPress={() => navigation.navigate('Games')} />
+          <View style={{ height: spacing.sm }} />
+          <Button title="Your playpals" variant="ghost" onPress={() => navigation.navigate('Playpals')} />
+          <Button title="Your groups" variant="ghost" onPress={() => navigation.navigate('Groups')} />
         </View>
       </View>
 
@@ -99,33 +266,130 @@ export const HomeScreen: React.FC = () => {
       />
 
       <Text style={s.results}>
-        {venuesQuery.isSuccess ? `${venues.length} venue${venues.length === 1 ? '' : 's'}` : ' '}
+        {(showFavorites ? favoritesQuery.isSuccess : venuesQuery.isSuccess) ? `${venues.length} venue${venues.length === 1 ? '' : 's'}${showFavorites ? ' saved' : ''}` : ' '}
       </Text>
     </View>
   );
 
   const renderEmpty = () => {
-    if (venuesQuery.isLoading) return <LoadingState label="Finding venues…" style={s.centered} />;
-    if (venuesQuery.isError) {
+    if (showFavorites && favoritesQuery.isLoading) return <LoadingState label="Loading saved venues…" style={s.centered} />;
+    if (!showFavorites && venuesQuery.isLoading) return <LoadingState label="Finding venues…" style={s.centered} />;
+    if ((showFavorites && favoritesQuery.isError) || (!showFavorites && venuesQuery.isError)) {
       return (
         <ErrorState
-          title="Couldn't load venues"
-          description="Check that the API is running and reachable from your device."
+          title={showFavorites ? "Couldn't load saved venues" : "Couldn't load venues"}
+          description="Check your connection and try again."
           style={s.centered}
-          action={
-            <Button title="Retry" variant="outline" onPress={() => venuesQuery.refetch()} />
-          }
+          action={<Button title="Retry" variant="outline" onPress={() => void (showFavorites ? favoritesQuery.refetch() : venuesQuery.refetch())} />}
         />
       );
     }
     return (
       <EmptyState
-        title="No venues found"
-        description={sportId ? 'Try a different sport.' : 'No venues have been added yet.'}
+        title={showFavorites ? 'No saved venues yet' : 'No venues found'}
+        description={showFavorites ? 'Save venues with the heart button and they will be easy to find here.' : sportId ? 'Try a different sport.' : 'No venues have been added yet.'}
         style={s.centered}
       />
     );
   };
+
+  const centerOnMyLocation = async () => {
+    setLocating(true);
+    setLocationError(null);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setLocationError('Location permission is off. You can still move the map and search an area.');
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude, longitude } = position.coords;
+      const nextRegion = { latitude, longitude, latitudeDelta: 0.12, longitudeDelta: 0.12 };
+      mapRef.current?.animateToRegion(nextRegion, 350);
+      setMapRegion(nextRegion);
+      setHasMapMoved(true);
+      setSearchArea({ latitude, longitude, radiusKm: 8 });
+      setSelectedMapVenue(null);
+    } catch {
+      setLocationError('Could not read your location. Move the map to search nearby venues.');
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const searchThisArea = () => {
+    const radiusKm = Math.min(200, Math.max(1, Math.ceil(Math.max(mapRegion.latitudeDelta, mapRegion.longitudeDelta) * 55.5)));
+    setSearchArea({ latitude: mapRegion.latitude, longitude: mapRegion.longitude, radiusKm });
+    setHasMapMoved(true);
+    setSelectedMapVenue(null);
+  };
+
+  if (showMap) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background.screen }}>
+        <ScrollView style={{ maxHeight: 260 }} keyboardShouldPersistTaps="handled">{renderHeader()}</ScrollView>
+        <View style={{ flex: 1 }}>
+          <MapView
+            ref={mapRef}
+            style={{ flex: 1 }}
+            initialRegion={mapRegion}
+            onRegionChangeComplete={(region) => { setMapRegion(region); setHasMapMoved(true); }}
+            showsUserLocation
+            showsMyLocationButton={false}
+            accessibilityLabel="Sports venues map"
+          >
+            {mapMarkers.map((marker) => marker.venues.length > 1 ? (
+              <Marker
+                key={marker.venues.map((venue) => venue.id).join(':')}
+                coordinate={marker.coordinate}
+                accessibilityLabel={`${marker.venues.length} venues in this area`}
+                onPress={() => {
+                  const nextRegion = { ...mapRegion, ...marker.coordinate, latitudeDelta: Math.max(mapRegion.latitudeDelta / 2, 0.015), longitudeDelta: Math.max(mapRegion.longitudeDelta / 2, 0.015) };
+                  mapRef.current?.animateToRegion(nextRegion, 250);
+                  setMapRegion(nextRegion);
+                }}
+              >
+                <View style={s.cluster}><Text style={s.clusterText}>{marker.venues.length}</Text></View>
+              </Marker>
+            ) : (
+              <Marker
+                key={marker.venues[0]!.id}
+                coordinate={marker.coordinate}
+                title={marker.venues[0]!.name}
+                description={marker.venues[0]!.city}
+                onPress={() => setSelectedMapVenue(marker.venues[0]!)}
+              />
+            ))}
+          </MapView>
+          <View style={s.mapOverlayActions}>
+            <TouchableOpacity accessibilityRole="button" style={s.mapPill} disabled={locating} onPress={() => void centerOnMyLocation()}>
+              <Text style={s.mapPillText}>{locating ? 'Locating…' : '◎ Near me'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" style={[s.mapPill, { marginLeft: 'auto' }]} onPress={searchThisArea}>
+              <Text style={s.mapPillText}>Search this area</Text>
+            </TouchableOpacity>
+          </View>
+          <View pointerEvents="box-none" style={s.mapBottom}>
+            {locationError ? <Text style={s.mapError}>{locationError}</Text> : null}
+            {venues.length > 0 && mapMarkers.length === 0 ? <Text style={s.mapError}>These venues do not have map coordinates yet.</Text> : null}
+            {selectedMapVenue ? (
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Open ${selectedMapVenue.name}`} activeOpacity={0.9} onPress={() => navigation.navigate('VenueDetail', { venueId: selectedMapVenue.id })}>
+                <View style={s.mapPreview}>
+                  <Image source={{ uri: selectedMapVenue.images?.[0] }} style={s.mapPreviewImage} />
+                  <View style={s.mapPreviewInfo}>
+                    <Text numberOfLines={1} style={s.mapVenueName}>{selectedMapVenue.name}</Text>
+                    <Text numberOfLines={1} style={s.mapMeta}>{selectedMapVenue.city} · {selectedMapVenue.priceFrom != null ? `from ₹${selectedMapVenue.priceFrom}` : 'Price on venue page'}</Text>
+                    <Text numberOfLines={1} style={s.mapMeta}>{selectedMapVenue.ratingAverage != null ? `★ ${selectedMapVenue.ratingAverage} verified rating` : 'New venue'} · {selectedMapVenue.nextAvailableSlot ? `Next ${selectedMapVenue.nextAvailableSlot.date} ${selectedMapVenue.nextAvailableSlot.startTime}` : 'No open slots listed'}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ) : null}
+            {venuesQuery.isFetching ? <ActivityIndicator color={colors.primary[600]} /> : null}
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <FlatList
@@ -141,12 +405,21 @@ export const HomeScreen: React.FC = () => {
             sportName={sportNameById.get(item.sportId)}
             onPress={() => navigation.navigate('VenueDetail', { venueId: item.id })}
           />
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={favoriteIds.has(item.id) ? `Remove ${item.name} from saved venues` : `Save ${item.name}`}
+            disabled={toggleFavorite.isPending}
+            style={s.favoriteToggle}
+            onPress={() => toggleFavorite.mutate({ venueId: item.id, isFavorite: favoriteIds.has(item.id) })}
+          >
+            <Text style={s.favoriteToggleText}>{favoriteIds.has(item.id) ? '♥ Saved' : '♡ Save venue'}</Text>
+          </TouchableOpacity>
         </View>
       )}
       refreshControl={
         <RefreshControl
-          refreshing={venuesQuery.isRefetching}
-          onRefresh={() => { void venuesQuery.refetch(); }}
+          refreshing={venuesQuery.isRefetching || favoritesQuery.isRefetching}
+          onRefresh={() => { void venuesQuery.refetch(); void favoritesQuery.refetch(); }}
           tintColor={colors.primary[600]}
         />
       }

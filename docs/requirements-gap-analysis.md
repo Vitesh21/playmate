@@ -1,7 +1,7 @@
 # Sports Community & Venue Booking Requirements — Gap Audit
 
-**Audit date:** 2026-11-07  
-**Scope:** Compare the November 2026 Sports Community & Venue Booking App requirements (MVP, Phase 2, Phase 3, admin, and non-functional requirements) with the repository code visible on the default branch.  
+**Audit date:** 2026-11-07
+**Scope:** Compare the November 2026 Sports Community & Venue Booking App requirements (MVP, Phase 2, Phase 3, admin, and non-functional requirements) with the repository code visible on the default branch.
 **Purpose:** This is an implementation checklist, not a claim that the listed features are complete. A screen, schema, roadmap entry, or endpoint alone does not count as an end-to-end feature.
 
 ## Status key

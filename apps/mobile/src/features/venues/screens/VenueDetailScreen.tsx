@@ -45,24 +45,25 @@ export const VenueDetailScreen: React.FC = () => {
 
   const [selectedDate, setSelectedDate] = useState<string>(dateOptions[0].dateStr);
   const [selectedCourtId, setSelectedCourtId] = useState<string | null>(null);
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
 
   const courts: Court[] = courtsQuery.data ?? [];
   const activeCourtId = selectedCourtId || (courts.length > 0 ? courts[0].id : null);
 
   const slotsQuery = useCourtSlots(activeCourtId || '', selectedDate);
   const slots: CourtSlot[] = slotsQuery.data ?? [];
+  const selectedTotal = slots.filter((slot) => selectedSlotIds.includes(slot.id)).reduce((total, slot) => total + slot.price, 0);
 
   const bookingMutation = useCreateBooking();
 
   const handleBookSlot = async () => {
-    if (!selectedSlotId) {
+    if (!selectedSlotIds.length) {
       Toast.show({ type: 'error', text1: 'Please select an available slot' });
       return;
     }
 
     try {
-      const res: any = await bookingMutation.mutateAsync({ courtSlotId: selectedSlotId });
+      const res: any = await bookingMutation.mutateAsync(selectedSlotIds.length === 1 ? { courtSlotId: selectedSlotIds[0]! } : { courtSlotIds: selectedSlotIds });
       const bookingId = res?.booking?.id || res?.bookingId || 'Pending';
       const paymentId = res?.payment?.id;
 
@@ -78,7 +79,7 @@ export const VenueDetailScreen: React.FC = () => {
       });
       await Linking.openURL(checkoutUrl);
       slotsQuery.refetch();
-      setSelectedSlotId(null);
+      setSelectedSlotIds([]);
     } catch (err: any) {
       Toast.show({
         type: 'error',
@@ -169,6 +170,9 @@ export const VenueDetailScreen: React.FC = () => {
           <Text style={s.address}>📍 {venue.address}, {venue.city}</Text>
           {venue.phone ? <Text style={s.address}>📞 {venue.phone}</Text> : null}
           <Text style={s.desc}>{venue.description}</Text>
+          <Text style={{ ...typography.body2, color: colors.text.secondary, marginBottom: spacing.md }}>
+            Cancellation: full refund at least {venue.cancellationPolicy?.freeCancellationHours ?? 24}h before start; {venue.cancellationPolicy?.lateRefundPercentage ?? 0}% refund after that, before the session begins.
+          </Text>
 
           {venue.amenities && venue.amenities.length > 0 && (
             <>
@@ -193,7 +197,7 @@ export const VenueDetailScreen: React.FC = () => {
                   style={[s.dateTab, isActive && s.dateTabActive]}
                   onPress={() => {
                     setSelectedDate(opt.dateStr);
-                    setSelectedSlotId(null);
+                    setSelectedSlotIds([]);
                   }}
                 >
                   <Text style={[s.dateTabText, isActive && s.dateTabTextActive]}>
@@ -221,7 +225,7 @@ export const VenueDetailScreen: React.FC = () => {
                     style={[s.courtTab, isActive && s.courtTabActive]}
                     onPress={() => {
                       setSelectedCourtId(court.id);
-                      setSelectedSlotId(null);
+                      setSelectedSlotIds([]);
                     }}
                   >
                     <Text style={[s.courtTabText, isActive && s.courtTabTextActive]}>
@@ -234,6 +238,7 @@ export const VenueDetailScreen: React.FC = () => {
           )}
 
           <Text style={s.sectionTitle}>Available Slot Timings</Text>
+          <Text style={{ ...typography.caption, color: colors.text.tertiary }}>Select one slot, or tap adjacent slots to book a longer session together.</Text>
           {slotsQuery.isLoading ? (
             <ActivityIndicator style={{ marginVertical: spacing.md }} />
           ) : slots.length === 0 ? (
@@ -243,7 +248,7 @@ export const VenueDetailScreen: React.FC = () => {
           ) : (
             <View style={s.slotsGrid}>
               {slots.map((slot) => {
-                const isSelected = slot.id === selectedSlotId;
+                const isSelected = selectedSlotIds.includes(slot.id);
                 const isAvail = slot.isAvailable;
                 return (
                   <TouchableOpacity
@@ -254,7 +259,38 @@ export const VenueDetailScreen: React.FC = () => {
                       isSelected && s.slotCardActive,
                       !isAvail && s.slotCardDisabled,
                     ]}
-                    onPress={() => setSelectedSlotId(slot.id)}
+                    onPress={() => {
+                      if (selectedSlotIds.includes(slot.id)) {
+                        const indexes = selectedSlotIds.map((id) => slots.findIndex((entry) => entry.id === id));
+                        const selectedIndex = slots.findIndex((entry) => entry.id === slot.id);
+                        if (selectedIndex !== Math.min(...indexes) && selectedIndex !== Math.max(...indexes)) {
+                          Toast.show({ type: 'info', text1: 'Keep your selection consecutive', text2: 'Remove an end slot first if you want to shorten the booking.' });
+                          return;
+                        }
+                        setSelectedSlotIds(selectedSlotIds.filter((id) => id !== slot.id));
+                        return;
+                      }
+                      if (!selectedSlotIds.length) { setSelectedSlotIds([slot.id]); return; }
+                      if (selectedSlotIds.length >= 10) {
+                        Toast.show({ type: 'info', text1: 'Maximum booking length reached', text2: 'Choose up to 10 consecutive slots per checkout.' });
+                        return;
+                      }
+                      const indexes = selectedSlotIds.map((id) => slots.findIndex((entry) => entry.id === id));
+                      const selectedIndex = slots.findIndex((entry) => entry.id === slot.id);
+                      const lower = Math.min(...indexes);
+                      const upper = Math.max(...indexes);
+                      if (selectedIndex !== lower - 1 && selectedIndex !== upper + 1) {
+                        Toast.show({ type: 'info', text1: 'Choose an adjacent slot', text2: 'Multi-slot bookings must be consecutive on the same court.' });
+                        return;
+                      }
+                      const nextIndexes = [...indexes, selectedIndex].sort((a, b) => a - b);
+                      const nextSlots = nextIndexes.map((index) => slots[index]!);
+                      if (nextSlots.some((entry) => !entry.isAvailable) || nextSlots.some((entry, index) => index > 0 && nextSlots[index - 1]!.endTime !== entry.startTime)) {
+                        Toast.show({ type: 'info', text1: 'Those slots are not consecutive', text2: 'Choose adjacent available times only.' });
+                        return;
+                      }
+                      setSelectedSlotIds(nextSlots.map((entry) => entry.id));
+                    }}
                   >
                     <Text style={s.slotTime}>{slot.startTime} - {slot.endTime}</Text>
                     <Text style={s.slotPrice}>
@@ -273,12 +309,13 @@ export const VenueDetailScreen: React.FC = () => {
       </ScrollView>
 
       <View style={s.footer}>
+        {selectedSlotIds.length > 1 ? <Text style={{ ...typography.subtitle2, color: colors.text.primary, textAlign: 'center', marginBottom: spacing.sm }}>Total for {selectedSlotIds.length} consecutive slots: ₹{selectedTotal}</Text> : null}
         <Button
-          title={selectedSlotId ? "Book Selected Slot Now" : "Select a Slot Timing"}
+          title={selectedSlotIds.length ? selectedSlotIds.length === 1 ? `Book Selected Slot · ₹${selectedTotal}` : `Continue to Payment · ₹${selectedTotal}` : "Select a Slot Timing"}
           variant="primary"
           size="lg"
           fullWidth
-          disabled={!selectedSlotId || bookingMutation.isPending}
+          disabled={!selectedSlotIds.length || bookingMutation.isPending}
           loading={bookingMutation.isPending}
           onPress={handleBookSlot}
         />
