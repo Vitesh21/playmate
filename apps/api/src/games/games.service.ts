@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { and, desc, eq, gte, inArray, lte, notInArray, or } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
-import { gameInvites, gameParticipants, games } from "@/db/schema/games";
+import { gameInvites, gameParticipants, gameRatings, games } from "@/db/schema/games";
 import { friendships, userBlocks, users } from "@/db/schema/users";
 import { bookings } from "@/db/schema/bookings";
 import { courtSlots } from "@/db/schema/court-slots";
-import type { GameCreateInput, GameSearchInput } from "@playmate/validation";
+import type { GameCreateInput, GameRatingCreateInput, GameSearchInput } from "@playmate/validation";
+import { UsersService } from "@/users/users.service";
 
 export function hasTimeConflict(start: Date, end: Date, existing: Array<{ startsAt: Date; endsAt: Date }>) {
   return existing.some((event) => start < event.endsAt && end > event.startsAt);
@@ -13,7 +14,7 @@ export function hasTimeConflict(start: Date, end: Date, existing: Array<{ starts
 
 @Injectable()
 export class GamesService {
-  constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb) {}
+  constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb, private readonly usersService: UsersService) {}
 
   async search(filters: GameSearchInput, viewerId: string) {
     const conditions = [
@@ -165,12 +166,13 @@ export class GamesService {
       const [cohost] = await this.db.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId), eq(gameParticipants.role, "COHOST"), eq(gameParticipants.status, "APPROVED"))).limit(1);
       if (!cohost) throw new ForbiddenException("Only the host and co-host can view join requests");
     }
-    return this.db.select({
+    const rows = await this.db.select({
       id: gameParticipants.id,
       gameId: gameParticipants.gameId,
       userId: gameParticipants.userId,
       status: gameParticipants.status,
       role: gameParticipants.role,
+      attendance: gameParticipants.attendance,
       message: gameParticipants.message,
       createdAt: gameParticipants.createdAt,
       updatedAt: gameParticipants.updatedAt,
@@ -182,6 +184,24 @@ export class GamesService {
     }).from(gameParticipants)
       .innerJoin(users, eq(users.id, gameParticipants.userId))
       .where(eq(gameParticipants.gameId, gameId));
+    return Promise.all(rows.map(async (row) => {
+      if (row.status !== "REQUESTED") return row;
+      const profile = await this.usersService.publicProfile(row.userId, userId).catch(() => null);
+      if (!profile) return { ...row, player: { ...row.player, trust: null } };
+      const profileSkillLevels = profile.skillLevels as Record<string, string>;
+      return {
+        ...row,
+        player: {
+          ...row.player,
+          trust: {
+            skillLevel: profileSkillLevels[game.sportId] ?? null,
+            gamesPlayed: profile.gamesPlayed,
+            reliabilityScore: profile.reliabilityScore,
+            ratingSummary: profile.ratingSummary,
+          },
+        },
+      };
+    }));
   }
 
   async decide(gameId: string, participantId: string, userId: string, approve: boolean) {
@@ -215,6 +235,65 @@ export class GamesService {
     if (!participant || participant.status !== "APPROVED" || participant.role === "HOST") throw new BadRequestException("Choose an approved player to appoint as co-host");
     const [updated] = await this.db.update(gameParticipants).set({ role: "COHOST", updatedAt: new Date() }).where(eq(gameParticipants.id, participantId)).returning();
     return updated;
+  }
+
+  async markAttendance(gameId: string, participantId: string, actorId: string, present: boolean) {
+    return this.db.transaction(async (tx) => {
+      const [game] = await tx.select().from(games).where(eq(games.id, gameId)).for("update").limit(1);
+      if (!game) throw new NotFoundException("Game not found");
+      const [actor] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, actorId), eq(gameParticipants.status, "APPROVED"))).limit(1);
+      if (game.hostId !== actorId && actor?.role !== "COHOST") throw new ForbiddenException("Only the host or a co-host can record attendance");
+      if (game.status === "CANCELLED" || game.status === "COMPLETED" || game.endsAt > new Date()) throw new BadRequestException("Attendance can be recorded after the game ends and before it is completed");
+      const [participant] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.id, participantId), eq(gameParticipants.status, "APPROVED"))).limit(1);
+      if (!participant) throw new NotFoundException("Approved game participant not found");
+      const [updated] = await tx.update(gameParticipants).set({ attendance: present ? "PRESENT" : "NO_SHOW", updatedAt: new Date() }).where(eq(gameParticipants.id, participantId)).returning();
+      return updated;
+    });
+  }
+
+  async complete(gameId: string, hostId: string) {
+    return this.db.transaction(async (tx) => {
+      const [game] = await tx.select().from(games).where(eq(games.id, gameId)).for("update").limit(1);
+      if (!game) throw new NotFoundException("Game not found");
+      if (game.hostId !== hostId) throw new ForbiddenException("Only the host can complete the game");
+      if (game.status === "CANCELLED") throw new BadRequestException("A cancelled game cannot be completed");
+      if (game.endsAt > new Date()) throw new BadRequestException("A game can be completed after its scheduled end time");
+      const participants = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.status, "APPROVED")));
+      if (participants.some((participant) => participant.attendance == null)) throw new BadRequestException("Record attendance for every approved player first");
+      const [updated] = await tx.update(games).set({ status: "COMPLETED", updatedAt: new Date() }).where(eq(games.id, gameId)).returning();
+      return updated;
+    });
+  }
+
+  async ratePlayer(gameId: string, raterId: string, input: GameRatingCreateInput) {
+    const [game] = await this.db.select().from(games).where(eq(games.id, gameId)).limit(1);
+    if (!game || game.status !== "COMPLETED") throw new BadRequestException("You can rate players after the game is completed");
+    if (new Date() > new Date(game.endsAt.getTime() + 48 * 60 * 60 * 1000)) throw new BadRequestException("The 48-hour rating window has closed");
+    if (raterId === input.ratedUserId) throw new BadRequestException("You cannot rate yourself");
+    const [rater] = await this.db.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, raterId), eq(gameParticipants.status, "APPROVED"), eq(gameParticipants.attendance, "PRESENT"))).limit(1);
+    const [rated] = await this.db.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, input.ratedUserId), eq(gameParticipants.status, "APPROVED"), eq(gameParticipants.attendance, "PRESENT"))).limit(1);
+    if (!rater || !rated) throw new ForbiddenException("Only players recorded as present can rate each other");
+    if (input.ratedUserId === game.hostId && input.hostRating === undefined) throw new BadRequestException("Add a separate host rating for the game host");
+    if (input.ratedUserId !== game.hostId && input.hostRating !== undefined) throw new BadRequestException("Host rating can only be submitted for the game host");
+    const [existing] = await this.db.select().from(gameRatings).where(and(eq(gameRatings.gameId, gameId), eq(gameRatings.raterId, raterId), eq(gameRatings.ratedUserId, input.ratedUserId))).limit(1);
+    if (existing) throw new ConflictException("You have already rated this player for this game");
+    const [rating] = await this.db.insert(gameRatings).values({ ...input, gameId, raterId, comment: input.comment?.trim() || null }).onConflictDoNothing().returning();
+    if (!rating) throw new ConflictException("You have already rated this player for this game");
+    return rating;
+  }
+
+  async ratingCandidates(gameId: string, userId: string) {
+    const [game] = await this.db.select().from(games).where(eq(games.id, gameId)).limit(1);
+    if (!game || game.status !== "COMPLETED") throw new BadRequestException("Ratings are available after the game is completed");
+    const [rater] = await this.db.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId), eq(gameParticipants.attendance, "PRESENT"))).limit(1);
+    if (!rater) throw new ForbiddenException("Only players marked present can rate this game");
+    const attendees = await this.db.select({ userId: gameParticipants.userId, firstName: users.firstName, lastName: users.lastName, avatarUrl: users.avatarUrl })
+      .from(gameParticipants).innerJoin(users, eq(users.id, gameParticipants.userId))
+      .where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.status, "APPROVED"), eq(gameParticipants.attendance, "PRESENT")));
+    const submitted = await this.db.select({ ratedUserId: gameRatings.ratedUserId }).from(gameRatings)
+      .where(and(eq(gameRatings.gameId, gameId), eq(gameRatings.raterId, userId)));
+    const ratedIds = new Set(submitted.map((rating) => rating.ratedUserId));
+    return attendees.filter((attendee) => attendee.userId !== userId).map((attendee) => ({ ...attendee, isHost: attendee.userId === game.hostId, alreadyRated: ratedIds.has(attendee.userId) }));
   }
 
   async leave(gameId: string, userId: string) {

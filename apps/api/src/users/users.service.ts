@@ -8,6 +8,7 @@ import { SupabaseService } from "@/common/supabase.service";
 import { BadRequestException } from "@nestjs/common";
 import { groupMembers, groupMessages, playerGroups } from "@/db/schema/community";
 import { desc } from "drizzle-orm";
+import { gameParticipants, gameRatings, games } from "@/db/schema/games";
 
 @Injectable()
 export class UsersService {
@@ -113,11 +114,42 @@ export class UsersService {
     return this.getMyProfile(id);
   }
 
-  async publicProfile(id: string) {
+  async publicProfile(id: string, viewerId?: string) {
     const user = await this.findById(id);
     const profile = user.profile && typeof user.profile === "object" ? user.profile as Record<string, any> : {};
     const visibility = profile.privacy?.profileVisibility ?? "PUBLIC";
     if (visibility === "PRIVATE") throw new NotFoundException("Player profile not found");
+    if (visibility === "PLAYPALS" && viewerId !== id) {
+      if (!viewerId) throw new NotFoundException("Player profile not found");
+      const [friendship] = await this.db.select().from(friendships).where(and(
+        eq(friendships.status, "ACCEPTED"),
+        or(and(eq(friendships.requesterId, id), eq(friendships.addresseeId, viewerId)), and(eq(friendships.requesterId, viewerId), eq(friendships.addresseeId, id))),
+      )).limit(1);
+      if (!friendship) throw new NotFoundException("Player profile not found");
+    }
+    const participations = await this.db.select({ attendance: gameParticipants.attendance })
+      .from(gameParticipants).innerJoin(games, eq(games.id, gameParticipants.gameId))
+      .where(and(eq(gameParticipants.userId, id), eq(gameParticipants.status, "APPROVED"), eq(games.status, "COMPLETED")));
+    const gamesPlayed = participations.filter((item) => item.attendance === "PRESENT").length;
+    const noShows = participations.filter((item) => item.attendance === "NO_SHOW").length;
+    const completedAttendance = gamesPlayed + noShows;
+    const reliabilityScore = completedAttendance ? Math.round((gamesPlayed / completedAttendance) * 100) : null;
+
+    const ratingsGivenToPlayer = await this.db.select().from(gameRatings).where(eq(gameRatings.ratedUserId, id));
+    const gameIds = [...new Set(ratingsGivenToPlayer.map((rating) => rating.gameId))];
+    const ratingsInGames = gameIds.length ? await this.db.select({ gameId: gameRatings.gameId, raterId: gameRatings.raterId, ratedUserId: gameRatings.ratedUserId }).from(gameRatings).where(inArray(gameRatings.gameId, gameIds)) : [];
+    const reciprocalKeys = new Set(ratingsInGames.map((rating) => `${rating.gameId}:${rating.raterId}:${rating.ratedUserId}`));
+    const visibleRatings = ratingsGivenToPlayer.filter((rating) => reciprocalKeys.has(`${rating.gameId}:${id}:${rating.raterId}`));
+    const ratingScoreValues = visibleRatings.flatMap((rating) => [rating.skill, rating.sportsmanship, rating.punctuality]);
+    const ratingSummary = {
+      average: ratingScoreValues.length ? Number((ratingScoreValues.reduce((sum, value) => sum + value, 0) / ratingScoreValues.length).toFixed(1)) : null,
+      count: visibleRatings.length,
+      skill: visibleRatings.length ? Number((visibleRatings.reduce((sum, item) => sum + item.skill, 0) / visibleRatings.length).toFixed(1)) : null,
+      sportsmanship: visibleRatings.length ? Number((visibleRatings.reduce((sum, item) => sum + item.sportsmanship, 0) / visibleRatings.length).toFixed(1)) : null,
+      punctuality: visibleRatings.length ? Number((visibleRatings.reduce((sum, item) => sum + item.punctuality, 0) / visibleRatings.length).toFixed(1)) : null,
+    };
+    const hostRatings = visibleRatings.filter((rating) => rating.hostRating !== null).map((rating) => rating.hostRating!);
+    const hostRating = hostRatings.length ? Number((hostRatings.reduce((sum, value) => sum + value, 0) / hostRatings.length).toFixed(1)) : null;
     return {
       id: user.id,
       firstName: user.firstName,
@@ -127,9 +159,11 @@ export class UsersService {
       preferredSports: visibility === "PUBLIC" ? profile.preferredSports ?? [] : [],
       skillLevels: visibility === "PUBLIC" ? profile.skillLevels ?? {} : {},
       homeLocation: profile.privacy?.showHomeArea ? profile.homeLocation ?? null : null,
-      gamesPlayed: 0,
-      reliabilityScore: 100,
-      ratingSummary: { average: null, count: 0 },
+      gamesPlayed: profile.privacy?.showGames === false ? null : gamesPlayed,
+      reliabilityScore,
+      reliabilitySampleSize: completedAttendance,
+      ratingSummary,
+      hostRating,
       visibility,
     };
   }

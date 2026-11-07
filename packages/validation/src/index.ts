@@ -132,6 +132,15 @@ export const gameSearchSchema = z.object({
   to: z.string().datetime().optional(),
 });
 
+export const gameRatingCreateSchema = z.object({
+  ratedUserId: z.string().uuid(),
+  skill: z.number().int().min(1).max(5),
+  sportsmanship: z.number().int().min(1).max(5),
+  punctuality: z.number().int().min(1).max(5),
+  hostRating: z.number().int().min(1).max(5).optional(),
+  comment: z.string().trim().max(500).optional().nullable(),
+});
+
 export const categoryCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   slug: z.string().min(1, "Slug is required"),
@@ -336,6 +345,7 @@ export type CourtSlotCreateInput = z.infer<typeof courtSlotCreateSchema>;
 export type BookingCreateInput = z.infer<typeof bookingCreateSchema>;
 export type GameCreateInput = z.infer<typeof gameCreateSchema>;
 export type GameSearchInput = z.infer<typeof gameSearchSchema>;
+export type GameRatingCreateInput = z.infer<typeof gameRatingCreateSchema>;
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>;
 export type CategoryUpdateInput = z.infer<typeof categoryUpdateSchema>;
 export type ProductCreateInput = z.infer<typeof productCreateSchema>;

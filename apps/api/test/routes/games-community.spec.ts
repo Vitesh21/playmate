@@ -9,6 +9,10 @@ const mockInvite = jest.fn();
 const mockMyInvites = jest.fn();
 const mockDecideInvite = jest.fn();
 const mockMakeCohost = jest.fn();
+const mockRatingCandidates = jest.fn();
+const mockRatePlayer = jest.fn();
+const mockMarkAttendance = jest.fn();
+const mockComplete = jest.fn();
 
 jest.mock("@/games/games.service", () => ({
   GamesService: jest.fn().mockImplementation(() => ({
@@ -16,6 +20,10 @@ jest.mock("@/games/games.service", () => ({
     myInvites: mockMyInvites,
     decideInvite: mockDecideInvite,
     makeCohost: mockMakeCohost,
+    ratingCandidates: mockRatingCandidates,
+    ratePlayer: mockRatePlayer,
+    markAttendance: mockMarkAttendance,
+    complete: mockComplete,
   })),
 }));
 
@@ -63,5 +71,39 @@ describe("Game invitation and co-host routes (e2e)", () => {
     const response = await request(app.getHttpServer()).post("/games/game-1/participants/participant-1/cohost").set(authBearer());
     expect(response.status).toBe(201);
     expect(mockMakeCohost).toHaveBeenCalledWith("game-1", "participant-1", VALID_USER.id);
+  });
+
+  it("loads rating candidates for an attended player", async () => {
+    mockRatingCandidates.mockResolvedValue([{ userId: "player-2", alreadyRated: false }]);
+    const response = await request(app.getHttpServer()).get("/games/game-1/rating-candidates").set(authBearer());
+    expect(response.status).toBe(200);
+    expect(mockRatingCandidates).toHaveBeenCalledWith("game-1", VALID_USER.id);
+  });
+
+  it("validates all rating dimensions before submission", async () => {
+    const response = await request(app.getHttpServer()).post("/games/game-1/ratings").set(authBearer()).send({
+      ratedUserId: "00000000-0000-0000-0000-000000000002", skill: 6, sportsmanship: 4, punctuality: 5,
+    });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(mockRatePlayer).not.toHaveBeenCalled();
+  });
+
+  it("submits validated player ratings for the signed-in player", async () => {
+    const rating = { ratedUserId: "00000000-0000-0000-0000-000000000002", skill: 4, sportsmanship: 5, punctuality: 3, hostRating: 4 };
+    mockRatePlayer.mockResolvedValue({ id: "rating-1", ...rating });
+    const response = await request(app.getHttpServer()).post("/games/game-1/ratings").set(authBearer()).send(rating);
+    expect(response.status).toBe(201);
+    expect(mockRatePlayer).toHaveBeenCalledWith("game-1", VALID_USER.id, rating);
+  });
+
+  it("records attendance and completes the game through authenticated routes", async () => {
+    mockMarkAttendance.mockResolvedValue({ id: "participant-1", attendance: "PRESENT" });
+    mockComplete.mockResolvedValue({ id: "game-1", status: "COMPLETED" });
+    const attendance = await request(app.getHttpServer()).patch("/games/game-1/attendance/participant-1").set(authBearer()).send({ present: true });
+    const completed = await request(app.getHttpServer()).patch("/games/game-1/complete").set(authBearer());
+    expect(attendance.status).toBe(200);
+    expect(mockMarkAttendance).toHaveBeenCalledWith("game-1", "participant-1", VALID_USER.id, true);
+    expect(completed.status).toBe(200);
+    expect(mockComplete).toHaveBeenCalledWith("game-1", VALID_USER.id);
   });
 });

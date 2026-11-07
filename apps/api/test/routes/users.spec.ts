@@ -71,6 +71,7 @@ describe("Users routes (e2e)", () => {
     const response = await request(app.getHttpServer()).get(`/users/${VALID_ADMIN.id}/public-profile`).set(authBearer(VALID_USER));
     expect(response.status).toBe(200);
     expect(response.body.data.visibility).toBe("PUBLIC");
+    expect(mockPublicProfile).toHaveBeenCalledWith(VALID_ADMIN.id, VALID_USER.id);
   });
 
   it("does not allow a user to read another user's profile", async () => {

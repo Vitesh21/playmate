@@ -50,6 +50,13 @@
       "when": 1794355200000,
       "tag": "0006_game_cohosts",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794441600000,
+      "tag": "0007_game_attendance_ratings",
+      "breakpoints": true
     }
   ]
 }

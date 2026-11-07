@@ -36,7 +36,8 @@ type Game = {
   visibility?: 'PUBLIC' | 'PRIVATE';
 };
 
-type Participant = { id: string; userId: string; status: string; role?: string; message?: string | null; player?: { firstName?: string | null; lastName?: string | null; avatarUrl?: string | null } };
+type Participant = { id: string; userId: string; status: string; role?: string; attendance?: 'PRESENT' | 'NO_SHOW' | null; message?: string | null; player?: { firstName?: string | null; lastName?: string | null; avatarUrl?: string | null; trust?: { skillLevel: string | null; gamesPlayed: number | null; reliabilityScore: number | null; ratingSummary: { average: number | null; count: number } } | null } };
+type RatingCandidate = { userId: string; firstName?: string | null; lastName?: string | null; avatarUrl?: string | null; isHost: boolean; alreadyRated: boolean };
 type ApiEnvelope<T> = { success: boolean; data: T; message?: string | string[] };
 
 const localDateKey = (date: Date) => {
@@ -62,6 +63,8 @@ export const GamesScreen: React.FC = () => {
   const venues = venuesQuery.data?.items ?? [];
   const [showHost, setShowHost] = useState(false);
   const [requestsGame, setRequestsGame] = useState<Game | null>(null);
+  const [ratingGame, setRatingGame] = useState<Game | null>(null);
+  const [ratingScores, setRatingScores] = useState<Record<string, { skill: number; sportsmanship: number; punctuality: number; hostRating: number }>>({});
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [players, setPlayers] = useState('4');
@@ -106,6 +109,11 @@ export const GamesScreen: React.FC = () => {
     queryKey: ['games', requestsGame?.id, 'participants'],
     enabled: !!requestsGame,
     queryFn: () => apiClient.get<ApiEnvelope<Participant[]>>(`/games/${requestsGame!.id}/participants`).then((response) => response.data ?? []),
+  });
+  const ratingCandidatesQuery = useQuery({
+    queryKey: ['games', ratingGame?.id, 'rating-candidates'],
+    enabled: !!ratingGame,
+    queryFn: () => apiClient.get<ApiEnvelope<RatingCandidate[]>>(`/games/${ratingGame!.id}/rating-candidates`).then((response) => response.data ?? []),
   });
   const refresh = () => Promise.all([gamesQuery.refetch(), mineQuery.refetch()]);
 
@@ -171,6 +179,25 @@ export const GamesScreen: React.FC = () => {
     mutationFn: (participantId: string) => apiClient.post(`/games/${requestsGame!.id}/participants/${participantId}/cohost`, {}),
     onSuccess: () => { void participantsQuery.refetch(); Alert.alert('Co-host added', 'They can now review and manage join requests.'); },
     onError: (error) => Alert.alert('Could not appoint co-host', explainError(error)),
+  });
+  const markAttendance = useMutation({
+    mutationFn: ({ participantId, present }: { participantId: string; present: boolean }) => apiClient.patch(`/games/${requestsGame!.id}/attendance/${participantId}`, { present }),
+    onSuccess: () => { void participantsQuery.refetch(); },
+    onError: (error) => Alert.alert('Could not record attendance', explainError(error)),
+  });
+  const completeGame = useMutation({
+    mutationFn: () => apiClient.patch(`/games/${requestsGame!.id}/complete`, {}),
+    onSuccess: () => { void participantsQuery.refetch(); void refresh(); Alert.alert('Game completed', 'Players who attended can now rate one another for the next 48 hours.'); },
+    onError: (error) => Alert.alert('Could not complete game', explainError(error)),
+  });
+  const submitRating = useMutation({
+    mutationFn: ({ candidate, scores }: { candidate: RatingCandidate; scores: { skill: number; sportsmanship: number; punctuality: number; hostRating: number } }) => apiClient.post(`/games/${ratingGame!.id}/ratings`, { ratedUserId: candidate.userId, skill: scores.skill, sportsmanship: scores.sportsmanship, punctuality: scores.punctuality, ...(candidate.isHost ? { hostRating: scores.hostRating } : {}) }),
+    onSuccess: (_, variables) => {
+      setRatingScores((current) => { const next = { ...current }; delete next[variables.candidate.userId]; return next; });
+      void ratingCandidatesQuery.refetch();
+      Alert.alert('Rating submitted', 'Thanks for helping players build a reliable community. Individual ratings stay private until both players submit.');
+    },
+    onError: (error) => Alert.alert('Could not submit rating', explainError(error)),
   });
   const leave = useMutation({
     mutationFn: (gameId: string) => apiClient.post(`/games/${gameId}/leave`, {}),
@@ -240,6 +267,7 @@ export const GamesScreen: React.FC = () => {
           <Text style={styles.detail}>{new Date(game.startsAt).toLocaleString()} · {game.status === 'FULL' ? 'Full' : 'Open'}</Text>
           <Button title="Manage join requests" variant="outline" onPress={() => setRequestsGame(game)} />
           <Button title="Invite a Playpal" variant="outline" onPress={() => sendInvite(game)} />
+          {game.status === 'COMPLETED' && Date.now() <= new Date(game.endsAt).getTime() + 48 * 60 * 60 * 1000 ? <Button title="Rate players" variant="outline" onPress={() => setRatingGame(game)} /> : null}
         </View>
       ))}
 
@@ -261,6 +289,7 @@ export const GamesScreen: React.FC = () => {
           <Text style={styles.gameTitle}>{game.title}</Text>
           <Text style={styles.detail}>{new Date(game.startsAt).toLocaleString()} · {participation.status === 'REQUESTED' ? 'Waiting for host approval' : participation.status === 'WAITLISTED' ? 'On the waitlist' : participation.status === 'APPROVED' ? 'You’re confirmed' : participation.status}</Text>
           {['REQUESTED', 'WAITLISTED', 'APPROVED'].includes(participation.status) ? <Button title="Leave game" variant="outline" onPress={() => leave.mutate(game.id)} loading={leave.isPending} /> : null}
+          {game.status === 'COMPLETED' && participation.status === 'APPROVED' && participation.attendance === 'PRESENT' && Date.now() <= new Date(game.endsAt).getTime() + 48 * 60 * 60 * 1000 ? <Button title="Rate players" variant="outline" onPress={() => setRatingGame(game)} /> : null}
         </View>
       ))}
 
@@ -362,7 +391,7 @@ export const GamesScreen: React.FC = () => {
       <Modal visible={!!requestsGame} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setRequestsGame(null)}>
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
-            <Text style={styles.title}>Join requests</Text>
+            <Text style={styles.title}>{requestsGame?.status === 'COMPLETED' ? 'Game attendance' : 'Join requests'}</Text>
             <Text style={styles.subtitle}>{requestsGame?.title}</Text>
           </View>
           {participantsQuery.isLoading ? <LoadingState label="Loading requests…" /> : (
@@ -371,6 +400,7 @@ export const GamesScreen: React.FC = () => {
               {(participantsQuery.data ?? []).filter((participant) => participant.status === 'REQUESTED').map((item) => (
                 <View key={item.id} style={styles.requestCard}>
                   <Text style={styles.badge}>{[item.player?.firstName, item.player?.lastName].filter(Boolean).join(' ') || 'Player'}</Text>
+                  <Text style={styles.detail}>{item.player?.trust ? `${item.player.trust.skillLevel ?? 'Skill not shared'} · ${item.player.trust.ratingSummary.average === null ? 'No mutual ratings yet' : `★ ${item.player.trust.ratingSummary.average} (${item.player.trust.ratingSummary.count})`} · ${item.player.trust.reliabilityScore === null ? 'New player' : `${item.player.trust.reliabilityScore}% reliability`} · ${item.player.trust.gamesPlayed ?? 0} games` : 'Player trust details are private or not available yet.'}</Text>
                   {item.message ? <Text style={styles.detail}>{item.message}</Text> : null}
                   <View style={styles.row}>
                     <View style={{ flex: 1 }}><Button title="Approve" size="sm" onPress={() => decide.mutate({ participantId: item.id, approve: true })} loading={decide.isPending} /></View>
@@ -379,15 +409,58 @@ export const GamesScreen: React.FC = () => {
                 </View>
               ))}
               <Text style={styles.sectionTitle}>Confirmed players</Text>
-              {(participantsQuery.data ?? []).filter((participant) => participant.status === 'APPROVED' && participant.role !== 'HOST').map((item) => (
+              {(participantsQuery.data ?? []).filter((participant) => participant.status === 'APPROVED' && (participant.role !== 'HOST' || !!requestsGame && requestsGame.status !== 'COMPLETED' && Date.now() >= new Date(requestsGame.endsAt).getTime())).map((item) => (
                 <View key={item.id} style={styles.requestCard}>
-                  <Text style={styles.badge}>{[item.player?.firstName, item.player?.lastName].filter(Boolean).join(' ') || 'Player'}{item.role === 'COHOST' ? ' · Co-host' : ''}</Text>
-                  {item.role !== 'COHOST' ? <Button title="Make co-host" size="sm" variant="outline" onPress={() => appointCohost.mutate(item.id)} loading={appointCohost.isPending} /> : null}
+                  <Text style={styles.badge}>{[item.player?.firstName, item.player?.lastName].filter(Boolean).join(' ') || 'Player'}{item.role === 'COHOST' ? ' · Co-host' : item.role === 'HOST' ? ' · Host' : ''}</Text>
+                  {item.role === 'PLAYER' ? <Button title="Make co-host" size="sm" variant="outline" onPress={() => appointCohost.mutate(item.id)} loading={appointCohost.isPending} /> : null}
+                  {requestsGame && requestsGame.status !== 'COMPLETED' && Date.now() >= new Date(requestsGame.endsAt).getTime() ? <>
+                    <Text style={styles.detail}>Attendance: {item.attendance ?? 'Not recorded'}</Text>
+                    <View style={styles.row}>
+                      <View style={{ flex: 1 }}><Button title="Present" size="sm" onPress={() => markAttendance.mutate({ participantId: item.id, present: true })} loading={markAttendance.isPending} /></View>
+                      <View style={{ flex: 1 }}><Button title="No-show" size="sm" variant="outline" onPress={() => markAttendance.mutate({ participantId: item.id, present: false })} loading={markAttendance.isPending} /></View>
+                    </View>
+                  </> : null}
                 </View>
               ))}
+              {requestsGame && requestsGame.status !== 'COMPLETED' && Date.now() >= new Date(requestsGame.endsAt).getTime() ? <>
+                <Text style={styles.hint}>Record attendance for every approved player, including yourself, before closing the game.</Text>
+                <Button title="Complete game" onPress={() => completeGame.mutate()} loading={completeGame.isPending} disabled={(participantsQuery.data ?? []).some((participant) => participant.status === 'APPROVED' && !participant.attendance)} />
+              </> : null}
             </ScrollView>
           )}
           <View style={{ padding: spacing.lg }}><Button title="Done" variant="outline" onPress={() => setRequestsGame(null)} /></View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!ratingGame} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setRatingGame(null)}>
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.title}>Rate players</Text>
+            <Text style={styles.subtitle}>{ratingGame?.title} · ratings close 48 hours after the game</Text>
+          </View>
+          {ratingCandidatesQuery.isLoading ? <LoadingState label="Loading players…" /> : ratingCandidatesQuery.isError ? <ErrorState title="Could not load players" description="Check your connection, then try again." action={<Button title="Retry" variant="outline" onPress={() => void ratingCandidatesQuery.refetch()} />} /> : (
+            <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+              {(ratingCandidatesQuery.data ?? []).map((candidate) => {
+                const scores = ratingScores[candidate.userId] ?? { skill: 5, sportsmanship: 5, punctuality: 5, hostRating: 5 };
+                return <View key={candidate.userId} style={styles.requestCard}>
+                  <Text style={styles.badge}>{[candidate.firstName, candidate.lastName].filter(Boolean).join(' ') || 'Player'}</Text>
+                  {candidate.alreadyRated ? <Text style={styles.detail}>Your rating is submitted and hidden until they rate you too.</Text> : <>
+                    {(['skill', 'sportsmanship', 'punctuality'] as const).map((category) => <View key={category}>
+                      <Text style={styles.detail}>{category === 'skill' ? 'Skill' : category === 'sportsmanship' ? 'Sportsmanship' : 'Punctuality'}</Text>
+                      <View style={styles.row}>{[1, 2, 3, 4, 5].map((score) => <Choice key={score} label={`${score}★`} selected={scores[category] === score} onPress={() => setRatingScores((current) => ({ ...current, [candidate.userId]: { ...scores, [category]: score } }))} />)}</View>
+                    </View>)}
+                    {candidate.isHost ? <View>
+                      <Text style={styles.detail}>Host experience</Text>
+                      <View style={styles.row}>{[1, 2, 3, 4, 5].map((score) => <Choice key={score} label={`${score}★`} selected={scores.hostRating === score} onPress={() => setRatingScores((current) => ({ ...current, [candidate.userId]: { ...scores, hostRating: score } }))} />)}</View>
+                    </View> : null}
+                    <Button title="Submit rating" size="sm" onPress={() => submitRating.mutate({ candidate, scores })} loading={submitRating.isPending} />
+                  </>}
+                </View>;
+              })}
+              {!ratingCandidatesQuery.data?.length ? <EmptyState title="No players to rate" description="Only players recorded as present can submit ratings." /> : null}
+            </ScrollView>
+          )}
+          <View style={{ padding: spacing.lg }}><Button title="Done" variant="outline" onPress={() => setRatingGame(null)} /></View>
         </View>
       </Modal>
     </View>

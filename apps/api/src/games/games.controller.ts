@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
 import { AuthGuard } from "@/common/auth.guard";
-import { gameCreateSchema, gameSearchSchema } from "@playmate/validation";
+import { gameCreateSchema, gameRatingCreateSchema, gameSearchSchema } from "@playmate/validation";
 import { GamesService } from "./games.service";
 import { z } from "zod";
 
@@ -72,6 +72,36 @@ export class GamesController {
   @ApiBearerAuth()
   async participants(@Req() req: any, @Param("id") id: string) {
     return { success: true, data: await this.games.participants(id, req.user.id) };
+  }
+
+  @Get(":id/rating-candidates")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async ratingCandidates(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.games.ratingCandidates(id, req.user.id) };
+  }
+
+  @Post(":id/ratings")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async ratePlayer(@Req() req: any, @Param("id") id: string, @Body() body: unknown) {
+    const input = gameRatingCreateSchema.parse(body);
+    return { success: true, data: await this.games.ratePlayer(id, req.user.id, input) };
+  }
+
+  @Patch(":id/attendance/:participantId")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async markAttendance(@Req() req: any, @Param("id") id: string, @Param("participantId") participantId: string, @Body() body: { present: boolean }) {
+    const parsed = z.object({ present: z.boolean() }).parse(body);
+    return { success: true, data: await this.games.markAttendance(id, participantId, req.user.id, parsed.present) };
+  }
+
+  @Patch(":id/complete")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async complete(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.games.complete(id, req.user.id) };
   }
 
   @Patch(":id/participants/:participantId")

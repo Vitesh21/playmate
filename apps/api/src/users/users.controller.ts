@@ -79,8 +79,8 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get a player's privacy-filtered public profile" })
-  async publicProfile(@Param("id") id: string) {
-    return { success: true, data: await this.usersService.publicProfile(id) };
+  async publicProfile(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.usersService.publicProfile(id, req.user.id) };
   }
 
   @Post(":id/block")
