@@ -18,6 +18,8 @@ export type HomeStackParamList = {
   SportVenues: { sportId: string };
   Search: undefined;
   Games: undefined;
+  Playpals: undefined;
+  Groups: undefined;
 };
 
 export type ShopStackParamList = {

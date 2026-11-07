@@ -1,9 +1,15 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, desc, eq, gte, lte, notInArray, or } from "drizzle-orm";
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { and, desc, eq, gte, inArray, lte, notInArray, or } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { gameParticipants, games } from "@/db/schema/games";
 import { userBlocks, users } from "@/db/schema/users";
+import { bookings } from "@/db/schema/bookings";
+import { courtSlots } from "@/db/schema/court-slots";
 import type { GameCreateInput, GameSearchInput } from "@playmate/validation";
+
+export function hasTimeConflict(start: Date, end: Date, existing: Array<{ startsAt: Date; endsAt: Date }>) {
+  return existing.some((event) => start < event.endsAt && end > event.startsAt);
+}
 
 @Injectable()
 export class GamesService {
@@ -56,6 +62,26 @@ export class GamesService {
       if (game.hostId === userId) throw new BadRequestException("You are already hosting this game");
       const [existing] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId))).limit(1);
       if (existing && existing.status !== "LEFT" && existing.status !== "DECLINED") throw new BadRequestException("You already have a request for this game");
+      const hostedGames = await tx.select().from(games).where(and(eq(games.hostId, userId), or(eq(games.status, "OPEN"), eq(games.status, "FULL"))!));
+      const participations = await tx.select().from(gameParticipants).where(and(
+        eq(gameParticipants.userId, userId),
+        or(eq(gameParticipants.status, "APPROVED"), eq(gameParticipants.status, "REQUESTED"))!,
+      ));
+      const participatedGameIds = participations.map(({ gameId: joinedGameId }) => joinedGameId).filter((joinedGameId) => joinedGameId !== gameId);
+      const participatedGames = participatedGameIds.length
+        ? await tx.select().from(games).where(and(inArray(games.id, participatedGameIds), or(eq(games.status, "OPEN"), eq(games.status, "FULL"))!))
+        : [];
+      const confirmedBookings = await tx.select({ date: courtSlots.date, startTime: courtSlots.startTime, endTime: courtSlots.endTime })
+        .from(bookings)
+        .innerJoin(courtSlots, eq(courtSlots.id, bookings.courtSlotId))
+        .where(and(eq(bookings.userId, userId), eq(bookings.status, "CONFIRMED")));
+      const bookingEvents = confirmedBookings.map(({ date, startTime, endTime }) => ({
+        startsAt: new Date(`${date}T${startTime}:00+05:30`),
+        endsAt: new Date(`${date}T${endTime}:00+05:30`),
+      }));
+      if (hasTimeConflict(game.startsAt, game.endsAt, [...hostedGames, ...participatedGames, ...bookingEvents])) {
+        throw new ConflictException("This game overlaps with another game on your calendar");
+      }
       const approved = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.status, "APPROVED"))).limit(game.maxPlayers);
       const isFull = game.status === "FULL" || approved.length >= game.maxPlayers;
       const status = isFull ? "WAITLISTED" : game.instantJoin ? "APPROVED" : "REQUESTED";

@@ -5,6 +5,19 @@ import { UsersService } from "./users.service";
 import { userUpdateSchema } from "@playmate/validation";
 import { UserRole } from "@playmate/types";
 import { AuthGuard, RolesGuard } from "@/common/auth.guard";
+import { z } from "zod";
+
+const playerProfileSchema = z.object({
+  firstName: z.string().trim().min(1).max(80).optional(),
+  lastName: z.string().trim().max(80).optional(),
+  avatarUrl: z.string().url().max(500).optional(),
+  bio: z.string().trim().max(500).optional(),
+  preferredSports: z.array(z.string().uuid()).max(20).optional(),
+  skillLevels: z.record(z.string().uuid(), z.enum(["BEGINNER", "RECREATIONAL", "INTERMEDIATE", "ADVANCED", "COMPETITIVE"])).optional(),
+  preferredTimes: z.array(z.enum(["MORNING", "AFTERNOON", "EVENING", "NIGHT"])).max(4).optional(),
+  homeLocation: z.object({ area: z.string().trim().max(100), city: z.string().trim().max(100) }).optional(),
+  privacy: z.object({ profileVisibility: z.enum(["PUBLIC", "PLAYPALS", "PRIVATE"]).optional(), showGames: z.boolean().optional(), showCalendar: z.boolean().optional(), showHomeArea: z.boolean().optional() }).optional(),
+});
 
 export class UpdateUserDto extends createZodDto(userUpdateSchema) {}
 
@@ -43,6 +56,31 @@ export class UsersController {
     const data = userUpdateSchema.parse(body);
     const user = await this.usersService.update(req.user.id, data);
     return { success: true, data: user };
+  }
+
+  @Get("me/profile")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get the current player's extended profile" })
+  async myProfile(@Req() req: any) {
+    return { success: true, data: await this.usersService.getMyProfile(req.user.id) };
+  }
+
+  @Patch("me/profile")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update sports profile and privacy preferences" })
+  async updateMyProfile(@Req() req: any, @Body() body: unknown) {
+    const patch = playerProfileSchema.parse(body);
+    return { success: true, data: await this.usersService.updateMyProfile(req.user.id, patch) };
+  }
+
+  @Get(":id/public-profile")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get a player's privacy-filtered public profile" })
+  async publicProfile(@Param("id") id: string) {
+    return { success: true, data: await this.usersService.publicProfile(id) };
   }
 
   @Post(":id/block")

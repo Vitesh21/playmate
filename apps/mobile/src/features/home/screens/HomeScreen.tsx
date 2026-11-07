@@ -74,6 +74,9 @@ export const HomeScreen: React.FC = () => {
         <Text style={s.subtitle}>Book a court, we&apos;ll bring the gear.</Text>
         <View style={{ marginTop: spacing.md }}>
           <Button title="Find or host a game" variant="outline" onPress={() => navigation.navigate('Games')} />
+          <View style={{ height: spacing.sm }} />
+          <Button title="Your playpals" variant="ghost" onPress={() => navigation.navigate('Playpals')} />
+          <Button title="Your groups" variant="ghost" onPress={() => navigation.navigate('Groups')} />
         </View>
       </View>
 

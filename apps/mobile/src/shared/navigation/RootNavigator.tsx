@@ -15,6 +15,9 @@ import { ProfileScreen } from '@features/profile';
 import { BookingsListScreen } from '@features/bookings';
 import { AdminDashboardScreen } from '@features/admin';
 import { GamesScreen } from '@features/games/GamesScreen';
+import PlaypalsScreen from '@features/profile/screens/PlaypalsScreen';
+import GroupsScreen from '@features/profile/screens/GroupsScreen';
+import EditProfileScreen from '@features/profile/screens/EditProfileScreen';
 import { ManageVenuesScreen, CreateVenueScreen, ManageVenueSlotsScreen, VenueDetailScreen } from '@features/venues';
 import { UserRole } from '@playmate/types';
 import type {
@@ -81,6 +84,8 @@ function HomeNavigator() {
     <HomeStack.Navigator screenOptions={opts}>
       <HomeStack.Screen name="Home" component={HomeScreen} options={{ title: 'Playmate' }} />
       <HomeStack.Screen name="Games" component={GamesScreen} options={{ title: 'Find a game' }} />
+      <HomeStack.Screen name="Playpals" component={PlaypalsScreen} options={{ title: 'Playpals' }} />
+      <HomeStack.Screen name="Groups" component={GroupsScreen} options={{ title: 'Groups' }} />
       <HomeStack.Screen
         name="VenueDetail"
         component={VenueDetailScreen}
@@ -156,9 +161,7 @@ function ProfileNavigator() {
   return (
     <ProfileStack.Navigator screenOptions={opts}>
       <ProfileStack.Screen name="ProfileHome" component={ProfileScreen} options={{ title: 'Profile' }} />
-      <ProfileStack.Screen name="EditProfile" options={{ title: 'Edit Profile' }}>
-        {() => <Placeholder title="Edit Profile" />}
-      </ProfileStack.Screen>
+      <ProfileStack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
       <ProfileStack.Screen name="Orders" options={{ title: 'My Orders' }}>
         {() => <Placeholder title="Orders" />}
       </ProfileStack.Screen>
