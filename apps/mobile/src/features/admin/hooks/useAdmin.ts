@@ -14,6 +14,11 @@ export type AdminStats = {
   users: { total: number };
   sports: { total: number };
   venues: { total: number };
+  activeUsers30d: number;
+  bookings: { total: number; confirmedSlots: number };
+  revenue: { gmv: number; refunds: number; net: number; bookingGmv: number; bookingNet: number; shopGmv: number; shopNet: number };
+  occupancy: { availableSlots: number; confirmedSlots: number; fillRatePercent: number };
+  repeatCustomers: number;
 };
 
 /** Dashboard counters — GET /admin/stats (ADMIN only). */
