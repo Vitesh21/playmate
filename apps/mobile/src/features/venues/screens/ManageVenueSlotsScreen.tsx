@@ -7,7 +7,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -27,19 +26,15 @@ const createCourtSchema = z.object({
 
 type CreateCourtForm = z.infer<typeof createCourtSchema>;
 
-const STANDARD_SLOT_HOURS = [
-  { start: '06:00', end: '07:00' },
-  { start: '07:00', end: '08:00' },
-  { start: '08:00', end: '09:00' },
-  { start: '09:00', end: '10:00' },
-  { start: '10:00', end: '11:00' },
-  { start: '16:00', end: '17:00' },
-  { start: '17:00', end: '18:00' },
-  { start: '18:00', end: '19:00' },
-  { start: '19:00', end: '20:00' },
-  { start: '20:00', end: '21:00' },
-  { start: '21:00', end: '22:00' },
-];
+const OPEN_WINDOWS = [[6 * 60, 11 * 60], [16 * 60, 22 * 60]] as const;
+
+function formatLocalDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatTime(totalMinutes: number): string {
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+}
 
 export const ManageVenueSlotsScreen: React.FC = () => {
   const route = useRoute<any>();
@@ -55,6 +50,7 @@ export const ManageVenueSlotsScreen: React.FC = () => {
 
   const [selectedCourtId, setSelectedCourtId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [slotDurationMinutes, setSlotDurationMinutes] = useState<30 | 60 | 90>(60);
 
   const { control, handleSubmit, reset } = useForm<CreateCourtForm>({
     resolver: zodResolver(createCourtSchema),
@@ -115,17 +111,19 @@ export const ManageVenueSlotsScreen: React.FC = () => {
       for (let i = 0; i < 7; i++) {
         const d = new Date(today);
         d.setDate(today.getDate() + i);
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = formatLocalDate(d);
 
-        for (const hour of STANDARD_SLOT_HOURS) {
-          slotsPayload.push({
-            courtId: court.id,
-            date: dateStr,
-            startTime: hour.start,
-            endTime: hour.end,
-            price: court.hourlyRate || 400,
-            isAvailable: true,
-          });
+        for (const [windowStart, windowEnd] of OPEN_WINDOWS) {
+          for (let start = windowStart; start + slotDurationMinutes <= windowEnd; start += slotDurationMinutes) {
+            slotsPayload.push({
+              courtId: court.id,
+              date: dateStr,
+              startTime: formatTime(start),
+              endTime: formatTime(start + slotDurationMinutes),
+              price: Math.round((court.hourlyRate || 400) * slotDurationMinutes / 60),
+              isAvailable: true,
+            });
+          }
         }
       }
 
@@ -137,7 +135,7 @@ export const ManageVenueSlotsScreen: React.FC = () => {
       Toast.show({
         type: 'success',
         text1: 'Slots Generated!',
-        text2: `Generated ${slotsPayload.length} slots for ${court.name} (next 7 days)`,
+        text2: `Generated ${slotDurationMinutes}-minute slots for ${court.name} (next 7 days)`,
       });
     } catch (err: any) {
       Toast.show({
@@ -169,6 +167,11 @@ export const ManageVenueSlotsScreen: React.FC = () => {
     courtTitle: { ...typography.h4, color: colors.text.primary },
     courtSubtitle: { ...typography.body2, color: colors.text.secondary, marginTop: 2 },
     slotBtn: { marginTop: spacing.md },
+    durationChoices: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+    durationChoice: { borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.background.primary },
+    durationChoiceActive: { borderColor: colors.primary[600], backgroundColor: colors.primary[600] },
+    durationChoiceText: { ...typography.caption, color: colors.text.secondary, fontWeight: '700' },
+    durationChoiceTextActive: { color: colors.text.inverse },
   });
 
   return (
@@ -179,7 +182,16 @@ export const ManageVenueSlotsScreen: React.FC = () => {
       <ScrollView contentContainerStyle={s.scroll}>
         <Text style={s.kicker}>SLOTS & COURTS MANAGEMENT</Text>
         <Text style={s.title}>{venueName}</Text>
-        <Text style={s.subtitle}>Add courts, configure hourly rates, and generate booking slots for players.</Text>
+        <Text style={s.subtitle}>Add courts, set base rates, choose a slot length, and publish availability.</Text>
+
+        <Text style={s.section}>Slot duration</Text>
+        <View style={s.durationChoices}>
+          {([30, 60, 90] as const).map((minutes) => (
+            <TouchableOpacity key={minutes} accessibilityRole="button" accessibilityState={{ selected: slotDurationMinutes === minutes }} style={[s.durationChoice, slotDurationMinutes === minutes && s.durationChoiceActive]} onPress={() => setSlotDurationMinutes(minutes)}>
+              <Text style={[s.durationChoiceText, slotDurationMinutes === minutes && s.durationChoiceTextActive]}>{minutes} min</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         <Text style={s.section}>Existing Courts ({courts.length})</Text>
         {courts.length === 0 ? (
@@ -200,7 +212,7 @@ export const ManageVenueSlotsScreen: React.FC = () => {
                 </View>
               </View>
               <Button
-                title={isGenerating ? "Generating 7-Day Slots…" : "⚡ Auto-Generate 7-Day Slots"}
+                title={isGenerating ? "Publishing availability…" : `⚡ Generate 7 days · ${slotDurationMinutes} min`}
                 variant="outline"
                 size="sm"
                 style={s.slotBtn}
