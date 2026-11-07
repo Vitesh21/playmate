@@ -108,8 +108,10 @@ export const courtSlotCreateSchema = z.object({
 });
 
 export const bookingCreateSchema = z.object({
-  courtSlotId: z.string().uuid("Invalid slot ID"),
-});
+  courtSlotId: z.string().uuid("Invalid slot ID").optional(),
+  courtSlotIds: z.array(z.string().uuid("Invalid slot ID")).min(2).max(10)
+    .refine((ids) => new Set(ids).size === ids.length, "A slot can only be selected once").optional(),
+}).strict().refine((input) => Boolean(input.courtSlotId) !== Boolean(input.courtSlotIds), "Provide one slot or a list of multiple slots");
 
 export const gameCreateSchema = z.object({
   sportId: z.string().uuid(),

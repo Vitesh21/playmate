@@ -12,6 +12,7 @@ import { apiClient } from '@shared/services/api';
 
 type BookingRow = Booking & {
   courtSlot?: { date?: string; startTime?: string; endTime?: string } | null;
+  courtSlots?: Array<{ courtSlot: { date?: string; startTime?: string; endTime?: string } }>;
   court?: { name?: string } | null;
   venue?: { name?: string; address?: string; city?: string } | null;
 };
@@ -130,7 +131,11 @@ export function BookingsListScreen() {
               <Badge label={getBookingStatusLabel(booking.status)} variant={getBookingStatusVariant(booking.status)} />
             </View>
 
-            {booking.courtSlot?.date ? (
+            {booking.courtSlots && booking.courtSlots.length > 1 ? (
+              <Text style={[typography.body1, { color: colors.text.primary, marginTop: spacing.md }]}>
+                {formatDate(booking.courtSlots[0]?.courtSlot.date ?? '', 'long')} · {formatTime(booking.courtSlots[0]?.courtSlot.startTime ?? '')}–{formatTime(booking.courtSlots[booking.courtSlots.length - 1]?.courtSlot.endTime ?? '')} ({booking.courtSlots.length} consecutive slots)
+              </Text>
+            ) : booking.courtSlot?.date ? (
               <Text style={[typography.body1, { color: colors.text.primary, marginTop: spacing.md }]}>
                 {formatDate(booking.courtSlot.date, 'long')}
                 {booking.courtSlot.startTime && booking.courtSlot.endTime

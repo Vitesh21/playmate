@@ -108,11 +108,8 @@ export function useCourtSlots(
 export function useCreateBooking() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { courtSlotId: string }) => {
-      const res = await apiClient.post<
-        ApiResponse<{ bookingId: string; paymentId: string; totalAmount: number }>,
-        { courtSlotId: string }
-      >('/bookings', data);
+    mutationFn: async (data: { courtSlotId: string } | { courtSlotIds: string[] }) => {
+      const res = await apiClient.post<ApiResponse<any>, typeof data>('/bookings', data);
       return res.data;
     },
     onSuccess: () => {
