@@ -44,14 +44,29 @@ export class BookingsController {
     return { success: true, data: result };
   }
 
+  @Get(":id/cancellation-quote")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Preview booking cancellation and refund policy" })
+  async cancellationQuote(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.bookingsService.cancellationQuote(id, req.user.id) };
+  }
+
+  @Post(":id/cancel")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Cancel a booking and apply the venue refund policy" })
+  async cancel(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.bookingsService.cancel(id, req.user.id) };
+  }
+
   @Delete(":id")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Cancel booking" })
   @ApiParam({ name: "id", description: "Booking UUID" })
-  async cancel(@Req() req: any, @Param("id") id: string) {
-    await this.bookingsService.cancel(id, req.user.id);
-    return { success: true, message: "Booking cancelled" };
+  async cancelLegacy(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.bookingsService.cancel(id, req.user.id) };
   }
 
   @Post("expire-pending")

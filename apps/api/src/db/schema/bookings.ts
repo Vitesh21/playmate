@@ -47,7 +47,8 @@ export const bookings = pgTable("bookings", {
     .notNull()
     .references(() => courtSlots.id),
   status: bookingStatusEnum("status").default("PENDING").notNull(), // Current lifecycle state of this booking
-  totalAmount: integer("total_amount").notNull(),        // Final charged amount, in smallest currency unit (paise/cents)
+  totalAmount: integer("total_amount").notNull(),        // Charged amount in INR; converted to paise for Razorpay
+  refundAmount: integer("refund_amount").notNull().default(0),
   expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true }), // Cutoff time for PENDING bookings before auto-expiry
   paymentId: uuid("payment_id").references(() => payments.id), // FK to payments — the transaction that paid for this booking
   createdAt: timestamp("created_at", { mode: "date", withTimezone: true })  // Timestamp when booking record was created

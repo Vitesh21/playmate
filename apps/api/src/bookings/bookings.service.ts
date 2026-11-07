@@ -53,6 +53,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { eq, and, inArray, desc, sql, or, gt, lt } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
@@ -77,6 +78,13 @@ export function orderAndValidateConsecutiveSlots<T extends { courtId: string; da
     throw new BadRequestException("Choose consecutive slots without gaps");
   }
   return ordered;
+}
+
+export function calculateCancellationRefund(totalAmount: number, hoursUntilStart: number, policy?: { freeCancellationHours: number; lateRefundPercentage: number }) {
+  if (hoursUntilStart <= 0) throw new BadRequestException("Bookings cannot be cancelled after their start time");
+  const effectivePolicy = policy ?? { freeCancellationHours: 24, lateRefundPercentage: 0 };
+  const refundPercent = hoursUntilStart >= effectivePolicy.freeCancellationHours ? 100 : effectivePolicy.lateRefundPercentage;
+  return { refundPercent, refundAmount: Math.round((totalAmount * refundPercent) / 100), policy: effectivePolicy };
 }
 
 @Injectable()
@@ -357,22 +365,72 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         .for("update");
 
       if (!booking) throw new NotFoundException("Booking not found");
-      // Terminal states → idempotent success, nothing to do
-      if (booking.status === "CANCELLED" || booking.status === "EXPIRED") return booking;
-      if (booking.status !== "PENDING") {
-        throw new BadRequestException("Confirmed bookings cannot be cancelled through this endpoint");
+      if (["CANCELLED", "EXPIRED", "REFUNDED"].includes(booking.status)) return booking;
+      if (booking.status !== "PENDING" && booking.status !== "CONFIRMED") throw new BadRequestException(`A booking in ${booking.status} state cannot be cancelled`);
+
+      let refundAmount = 0;
+      let refund: unknown;
+      let cancellationPercent = 0;
+      if (booking.status === "CONFIRMED") {
+        const [details] = await tx.select({ date: courtSlots.date, startTime: courtSlots.startTime, policy: venues.cancellationPolicy })
+          .from(courtSlots).innerJoin(courts, eq(courts.id, courtSlots.courtId)).innerJoin(venues, eq(venues.id, courts.venueId))
+          .where(eq(courtSlots.id, booking.courtSlotId)).limit(1);
+        if (!details) throw new NotFoundException("Venue booking details not found");
+        const startsAt = new Date(`${details.date}T${details.startTime}:00+05:30`);
+        const now = new Date();
+        const hoursUntilStart = (startsAt.getTime() - now.getTime()) / 3_600_000;
+        if (hoursUntilStart <= 0) throw new BadRequestException("Bookings cannot be cancelled after their start time");
+        const cancellation = calculateCancellationRefund(booking.totalAmount, hoursUntilStart, details.policy);
+        cancellationPercent = cancellation.refundPercent;
+        refundAmount = cancellation.refundAmount;
+
+        const [payment] = booking.paymentId ? await tx.select().from(payments).where(eq(payments.id, booking.paymentId)).limit(1) : [];
+        if (!payment || payment.status !== "PAID") throw new ServiceUnavailableException("The paid transaction could not be verified; contact support before cancelling");
+        if (refundAmount > 0) {
+          const gateway = payment.gatewayResponse && typeof payment.gatewayResponse === "object" ? payment.gatewayResponse as Record<string, any> : {};
+          const capturedPaymentId = gateway.razorpayPaymentId ?? gateway.payload?.payment?.entity?.id ?? gateway.payment?.entity?.id;
+          const isMock = payment.transactionId?.startsWith("order_mock_") || payment.transactionId?.startsWith("order_dev_") || gateway.verifiedVia === "mock-checkout";
+          if (isMock) {
+            if (process.env.NODE_ENV === "production") throw new ServiceUnavailableException("Mock transactions cannot be refunded in production");
+            refund = { id: `rfnd_mock_${payment.id}`, status: "processed", amount: refundAmount * 100, simulated: true };
+          } else {
+            if (!capturedPaymentId) throw new ServiceUnavailableException("The gateway payment reference is missing; support must review this refund");
+            refund = await this.razorpay.refundPayment(capturedPaymentId, refundAmount * 100, "booking_cancellation");
+          }
+          await tx.update(payments).set({
+            status: refundAmount >= booking.totalAmount ? "REFUNDED" as PaymentStatus : "PARTIALLY_REFUNDED" as PaymentStatus,
+            gatewayResponse: { ...gateway, cancellationRefund: refund, cancellationRefundAmount: refundAmount, cancellationRefundPercent: cancellationPercent },
+            updatedAt: new Date(),
+          }).where(eq(payments.id, payment.id));
+        }
+      } else if (booking.paymentId) {
+        await tx.update(payments).set({ status: "FAILED" as PaymentStatus, updatedAt: new Date() }).where(and(eq(payments.id, booking.paymentId), eq(payments.status, "PENDING")));
       }
 
       const [updated] = await tx
         .update(bookings)
-        .set({ status: "CANCELLED" as BookingStatus, updatedAt: new Date() })
+        .set({ status: refundAmount === booking.totalAmount && refundAmount > 0 ? "REFUNDED" as BookingStatus : "CANCELLED" as BookingStatus, refundAmount, updatedAt: new Date() })
         .where(eq(bookings.id, bookingId))
         .returning();
 
       await this.syncBookingAvailability(tx, booking);
 
-      return updated;
+      return { ...updated, cancellation: { refundAmount, refundPercent: cancellationPercent, refund } };
     });
+  }
+
+  async cancellationQuote(bookingId: string, userId: string) {
+    const [details] = await this.db.select({ booking: bookings, date: courtSlots.date, startTime: courtSlots.startTime, policy: venues.cancellationPolicy, venueName: venues.name })
+      .from(bookings).innerJoin(courtSlots, eq(courtSlots.id, bookings.courtSlotId))
+      .innerJoin(courts, eq(courts.id, courtSlots.courtId)).innerJoin(venues, eq(venues.id, courts.venueId))
+      .where(and(eq(bookings.id, bookingId), eq(bookings.userId, userId))).limit(1);
+    if (!details) throw new NotFoundException("Booking not found");
+    if (details.booking.status === "PENDING") return { bookingId, status: details.booking.status, venueName: details.venueName, refundAmount: 0, refundPercent: 0, message: "This booking is unpaid. Cancelling it releases the hold and no payment will be charged." };
+    if (details.booking.status !== "CONFIRMED") throw new BadRequestException(`A booking in ${details.booking.status} state cannot be cancelled`);
+    const startsAt = new Date(`${details.date}T${details.startTime}:00+05:30`);
+    const hoursUntilStart = (startsAt.getTime() - Date.now()) / 3_600_000;
+    const cancellation = calculateCancellationRefund(details.booking.totalAmount, hoursUntilStart, details.policy);
+    return { bookingId, status: details.booking.status, venueName: details.venueName, hoursUntilStart: Math.floor(hoursUntilStart), ...cancellation, totalAmount: details.booking.totalAmount, currency: "INR" };
   }
 
   /**

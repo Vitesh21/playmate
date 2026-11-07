@@ -7,6 +7,7 @@ export {
   useCreateBooking,
   useMyVenues,
   useCreateVenue,
+  useUpdateVenue,
 } from './hooks/useVenues';
 export { VenueCard } from './components/VenueCard';
 export { default as ManageVenuesScreen } from './screens/ManageVenuesScreen';

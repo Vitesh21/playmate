@@ -37,6 +37,11 @@ const operatingHoursSchema = z.object({
   isClosed: z.boolean().default(false),
 });
 
+export const cancellationPolicySchema = z.object({
+  freeCancellationHours: z.number().int().min(0).max(720).default(24),
+  lateRefundPercentage: z.number().int().min(0).max(100).default(0),
+}).default({ freeCancellationHours: 24, lateRefundPercentage: 0 });
+
 export const venueCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   slug: z.string().min(1, "Slug is required"),
@@ -53,6 +58,7 @@ export const venueCreateSchema = z.object({
   images: z.array(z.string().url("Invalid image URL")).default([]),
   amenities: z.array(z.string()).default([]),
   operatingHours: z.array(operatingHoursSchema).default([]),
+  cancellationPolicy: cancellationPolicySchema,
   isActive: z.boolean().default(true),
   ownerId: z.string().uuid("Invalid owner ID").optional().nullable(),
 });

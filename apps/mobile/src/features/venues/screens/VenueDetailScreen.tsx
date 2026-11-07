@@ -170,6 +170,9 @@ export const VenueDetailScreen: React.FC = () => {
           <Text style={s.address}>📍 {venue.address}, {venue.city}</Text>
           {venue.phone ? <Text style={s.address}>📞 {venue.phone}</Text> : null}
           <Text style={s.desc}>{venue.description}</Text>
+          <Text style={{ ...typography.body2, color: colors.text.secondary, marginBottom: spacing.md }}>
+            Cancellation: full refund at least {venue.cancellationPolicy?.freeCancellationHours ?? 24}h before start; {venue.cancellationPolicy?.lateRefundPercentage ?? 0}% refund after that, before the session begins.
+          </Text>
 
           {venue.amenities && venue.amenities.length > 0 && (
             <>

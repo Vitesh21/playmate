@@ -64,6 +64,13 @@
       "when": 1794528000000,
       "tag": "0008_multi_slot_bookings",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794614400000,
+      "tag": "0009_cancellation_policy_refunds",
+      "breakpoints": true
     }
   ]
 }

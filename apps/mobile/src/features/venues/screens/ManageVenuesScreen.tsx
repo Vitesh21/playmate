@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@theme/index';
 import { Button, EmptyState, ErrorState, LoadingState } from '@components/ui';
-import { useMyVenues, useSports, VenueCard } from '@features/venues';
+import { useMyVenues, useSports, useUpdateVenue, VenueCard } from '@features/venues';
 import { useAuthStore } from '@store/auth.store';
 import { roleLabel } from '@utils/index';
 import type { ManageStackParamList } from '@navigation/types';
@@ -21,6 +21,7 @@ export const ManageVenuesScreen: React.FC = () => {
 
   const venuesQuery = useMyVenues();
   const sportsQuery = useSports();
+  const updateVenue = useUpdateVenue();
 
   const venues: Venue[] = venuesQuery.data ?? [];
   const sportNameById = new Map((sportsQuery.data ?? []).map((s) => [s.id, s.name]));
@@ -54,6 +55,14 @@ export const ManageVenuesScreen: React.FC = () => {
       color: colors.primary[700],
       fontWeight: '600',
     },
+    policyBox: { backgroundColor: colors.background.secondary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+    policyTitle: { ...typography.subtitle2, color: colors.text.primary },
+    policyLabel: { ...typography.caption, color: colors.text.tertiary, marginTop: spacing.sm, marginBottom: spacing.xs },
+    policyChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+    policyChoice: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border.medium },
+    policyChoiceActive: { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+    policyChoiceText: { ...typography.caption, color: colors.text.secondary },
+    policyChoiceTextActive: { color: colors.text.inverse, fontWeight: '700' },
   });
 
   const renderHeader = () => (
@@ -119,6 +128,26 @@ export const ManageVenuesScreen: React.FC = () => {
               venueName: item.name,
             })}
           />
+          <View style={s.policyBox}>
+            <Text style={s.policyTitle}>Cancellation & refund policy</Text>
+            <Text style={s.policyLabel}>Full refund until (hours before start)</Text>
+            <View style={s.policyChoices}>
+              {[0, 12, 24, 48].map((hours) => {
+                const current = item.cancellationPolicy ?? { freeCancellationHours: 24, lateRefundPercentage: 0 };
+                const active = current.freeCancellationHours === hours;
+                return <TouchableOpacity key={hours} disabled={updateVenue.isPending} style={[s.policyChoice, active && s.policyChoiceActive]} onPress={() => updateVenue.mutate({ id: item.id, cancellationPolicy: { ...current, freeCancellationHours: hours } })}><Text style={[s.policyChoiceText, active && s.policyChoiceTextActive]}>{hours}h</Text></TouchableOpacity>;
+              })}
+            </View>
+            <Text style={s.policyLabel}>Refund after that, before session starts</Text>
+            <View style={s.policyChoices}>
+              {[0, 50, 75, 100].map((percentage) => {
+                const current = item.cancellationPolicy ?? { freeCancellationHours: 24, lateRefundPercentage: 0 };
+                const active = current.lateRefundPercentage === percentage;
+                return <TouchableOpacity key={percentage} disabled={updateVenue.isPending} style={[s.policyChoice, active && s.policyChoiceActive]} onPress={() => updateVenue.mutate({ id: item.id, cancellationPolicy: { ...current, lateRefundPercentage: percentage } })}><Text style={[s.policyChoiceText, active && s.policyChoiceTextActive]}>{percentage}%</Text></TouchableOpacity>;
+              })}
+            </View>
+            {updateVenue.isError ? <Text style={[s.policyLabel, { color: colors.error[600] }]}>Could not save policy. Please try again.</Text> : null}
+          </View>
           <View style={s.manageRow}>
             <TouchableOpacity
               style={s.manageBtn}

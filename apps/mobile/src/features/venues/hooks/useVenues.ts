@@ -143,6 +143,7 @@ export type CreateVenuePayload = {
   phone?: string | null;
   images?: string[];
   amenities?: string[];
+  cancellationPolicy?: { freeCancellationHours: number; lateRefundPercentage: number };
 };
 
 /** Create a venue — VENUE_OWNER / ADMIN only (POST /venues). */
@@ -155,6 +156,20 @@ export function useCreateVenue() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: VENUE_KEYS.all });
+    },
+  });
+}
+
+export function useUpdateVenue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; cancellationPolicy: NonNullable<CreateVenuePayload['cancellationPolicy']> }) => {
+      const res = await apiClient.patch<ApiResponse<Venue>, typeof data>(`/venues/${id}`, data);
+      return res.data;
+    },
+    onSuccess: (venue) => {
+      queryClient.invalidateQueries({ queryKey: VENUE_KEYS.all });
+      if (venue?.id) queryClient.invalidateQueries({ queryKey: VENUE_KEYS.detail(venue.id) });
     },
   });
 }

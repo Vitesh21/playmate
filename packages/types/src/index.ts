@@ -46,6 +46,7 @@ export enum PaymentStatus {
   PAID = "PAID",
   FAILED = "FAILED",
   REFUNDED = "REFUNDED",
+  PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED",
 }
 
 /** Payment gateways supported. Add UPI/Stripe/Paytm as new enum members. */
@@ -144,6 +145,7 @@ export type Venue = {
   images: string[];
   /** Free-text amenities: ["Parking", "AC", "Shower", "Changing Room", "Pro Shop"] */
   amenities: string[];
+  cancellationPolicy?: { freeCancellationHours: number; lateRefundPercentage: number };
   /** 7 entries, one per weekday (0 = Sunday, 6 = Saturday). */
   operatingHours: OperatingHours[];
   isActive: boolean;
@@ -203,8 +205,10 @@ export type Booking = {
   userId: ID;
   courtSlotId: ID;
   status: BookingStatus;
-  /** Total amount in INR. For now = slot.price; later add convenience fees / discounts. */
+  /** Total amount in INR, including all selected consecutive court slots. */
   totalAmount: number;
+  /** Amount refunded in INR after venue cancellation policy is applied. */
+  refundAmount: number;
   /** When to auto-release the slot if payment doesn't complete (15 min from now). */
   expiresAt?: Date | null;
   paymentId?: ID | null;

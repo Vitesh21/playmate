@@ -129,11 +129,11 @@ export class RazorpayService implements OnModuleInit {
     return this.client.orders.fetchPayments(orderId);
   }
 
-  async refundPayment(paymentId: string, amount: number) {
+  async refundPayment(paymentId: string, amount: number, reason = "booking_hold_expired") {
     return this.client.payments.refund(paymentId, {
       amount,
       receipt: `playmate-${paymentId}`,
-      notes: { reason: "booking_hold_expired" },
+      notes: { reason },
     });
   }
 
