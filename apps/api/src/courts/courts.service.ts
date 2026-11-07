@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { eq, and, inArray, gt } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { courts, type NewCourt } from "@/db/schema/courts";
@@ -115,5 +115,25 @@ export class CourtsService {
     await this.assertVenueAccess(court.venueId, actorId, role);
     const values = slots.map((s) => ({ ...s, courtId } as unknown as NewCourtSlot));
     return this.db.insert(courtSlots).values(values).onConflictDoNothing().returning();
+  }
+
+  async setSlotAvailability(courtId: string, slotId: string, isAvailable: boolean, actorId: string, role: UserRole) {
+    const court = await this.findById(courtId);
+    await this.assertVenueAccess(court.venueId, actorId, role);
+    return this.db.transaction(async (tx) => {
+      const [slot] = await tx.select().from(courtSlots)
+        .where(and(eq(courtSlots.id, slotId), eq(courtSlots.courtId, courtId))).for("update").limit(1);
+      if (!slot) throw new NotFoundException("Slot not found for this court");
+
+      if (!isAvailable) {
+        const [activeBooking] = await tx.select({ id: bookings.id }).from(bookings)
+          .where(and(eq(bookings.courtSlotId, slotId), inArray(bookings.status, ["PENDING", "CONFIRMED"]))).limit(1);
+        if (activeBooking) throw new ConflictException("This slot has an active booking or payment hold and cannot be blocked");
+      }
+
+      const [updated] = await tx.update(courtSlots).set({ isAvailable, updatedAt: new Date() })
+        .where(and(eq(courtSlots.id, slotId), eq(courtSlots.courtId, courtId))).returning();
+      return updated;
+    });
   }
 }

@@ -19,6 +19,8 @@ export class BulkCreateCourtSlotsDto extends createZodDto(
     slots: z.array(courtSlotCreateSchema),
   }),
 ) {}
+const slotAvailabilitySchema = z.object({ isAvailable: z.boolean() });
+export class UpdateSlotAvailabilityDto extends createZodDto(slotAvailabilitySchema) {}
 
 @ApiTags("Courts")
 @Controller("courts")
@@ -74,6 +76,16 @@ export class CourtsController {
     if (slots.some((slot) => slot.courtId !== courtId)) throw new BadRequestException("Every slot must belong to the route court");
     const created = await this.courtsService.bulkCreateSlots(courtId, slots, req.user.id, req.user.role);
     return { success: true, data: created, count: created.length };
+  }
+
+  @Patch(":courtId/slots/:slotId/availability")
+  @UseGuards(AuthGuard, new RolesGuard([UserRole.VENUE_OWNER, UserRole.ADMIN]))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Block or reopen an unbooked court slot" })
+  async setSlotAvailability(@Req() req: any, @Param("courtId") courtId: string, @Param("slotId") slotId: string, @Body() body: UpdateSlotAvailabilityDto) {
+    const data = slotAvailabilitySchema.parse(body);
+    const slot = await this.courtsService.setSlotAvailability(courtId, slotId, data.isAvailable, req.user.id, req.user.role);
+    return { success: true, data: slot };
   }
 
   @Patch(":id")

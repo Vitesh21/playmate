@@ -248,4 +248,17 @@ export function useBulkCreateSlots() {
   });
 }
 
+export function useSetCourtSlotAvailability() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ courtId, slotId, isAvailable }: { courtId: string; slotId: string; isAvailable: boolean }) => {
+      const res = await apiClient.patch<ApiResponse<CourtSlot>, { isAvailable: boolean }>(
+        `/courts/${courtId}/slots/${slotId}/availability`, { isAvailable },
+      );
+      return res.data;
+    },
+    onSuccess: (_data, variables) => queryClient.invalidateQueries({ queryKey: [...VENUE_KEYS.all, 'slots', variables.courtId] }),
+  });
+}
+
 export { VENUE_KEYS };
