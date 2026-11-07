@@ -81,6 +81,13 @@ export class GamesController {
     return { success: true, data: await this.games.decide(id, participantId, req.user.id, body.approve) };
   }
 
+  @Post(":id/participants/:participantId/cohost")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async makeCohost(@Req() req: any, @Param("id") id: string, @Param("participantId") participantId: string) {
+    return { success: true, data: await this.games.makeCohost(id, participantId, req.user.id) };
+  }
+
   @Post(":id/leave")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()

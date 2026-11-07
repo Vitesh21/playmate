@@ -17,6 +17,7 @@ export const gameVisibilityEnum = pgEnum("game_visibility", ["PUBLIC", "PRIVATE"
 export const gameStatusEnum = pgEnum("game_status", ["OPEN", "FULL", "CANCELLED", "COMPLETED"]);
 export const gameJoinStatusEnum = pgEnum("game_join_status", ["REQUESTED", "APPROVED", "DECLINED", "WAITLISTED", "LEFT"]);
 export const gameInviteStatusEnum = pgEnum("game_invite_status", ["PENDING", "ACCEPTED", "DECLINED"]);
+export const gameParticipantRoleEnum = pgEnum("game_participant_role", ["HOST", "COHOST", "PLAYER"]);
 
 export const games = pgTable("games", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -43,6 +44,7 @@ export const gameParticipants = pgTable("game_participants", {
   gameId: uuid("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: gameJoinStatusEnum("status").notNull().default("REQUESTED"),
+  role: gameParticipantRoleEnum("role").notNull().default("PLAYER"),
   message: text("message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -36,7 +36,7 @@ type Game = {
   visibility?: 'PUBLIC' | 'PRIVATE';
 };
 
-type Participant = { id: string; userId: string; status: string; message?: string | null; player?: { firstName?: string | null; lastName?: string | null; avatarUrl?: string | null } };
+type Participant = { id: string; userId: string; status: string; role?: string; message?: string | null; player?: { firstName?: string | null; lastName?: string | null; avatarUrl?: string | null } };
 type ApiEnvelope<T> = { success: boolean; data: T; message?: string | string[] };
 
 const localDateKey = (date: Date) => {
@@ -166,6 +166,11 @@ export const GamesScreen: React.FC = () => {
       void queryClient.invalidateQueries({ queryKey: ['games'] });
     },
     onError: (error) => Alert.alert('Could not update request', explainError(error)),
+  });
+  const appointCohost = useMutation({
+    mutationFn: (participantId: string) => apiClient.post(`/games/${requestsGame!.id}/participants/${participantId}/cohost`, {}),
+    onSuccess: () => { void participantsQuery.refetch(); Alert.alert('Co-host added', 'They can now review and manage join requests.'); },
+    onError: (error) => Alert.alert('Could not appoint co-host', explainError(error)),
   });
   const leave = useMutation({
     mutationFn: (gameId: string) => apiClient.post(`/games/${gameId}/leave`, {}),
@@ -361,13 +366,10 @@ export const GamesScreen: React.FC = () => {
             <Text style={styles.subtitle}>{requestsGame?.title}</Text>
           </View>
           {participantsQuery.isLoading ? <LoadingState label="Loading requests…" /> : (
-            <FlatList
-              contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}
-              data={(participantsQuery.data ?? []).filter((participant) => participant.status === 'REQUESTED')}
-              keyExtractor={(participant) => participant.id}
-              ListEmptyComponent={<EmptyState title="No pending requests" description="New player requests will show up here." />}
-              renderItem={({ item }) => (
-                <View style={styles.requestCard}>
+            <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}>
+              <Text style={styles.sectionTitle}>Pending requests</Text>
+              {(participantsQuery.data ?? []).filter((participant) => participant.status === 'REQUESTED').map((item) => (
+                <View key={item.id} style={styles.requestCard}>
                   <Text style={styles.badge}>{[item.player?.firstName, item.player?.lastName].filter(Boolean).join(' ') || 'Player'}</Text>
                   {item.message ? <Text style={styles.detail}>{item.message}</Text> : null}
                   <View style={styles.row}>
@@ -375,8 +377,15 @@ export const GamesScreen: React.FC = () => {
                     <View style={{ flex: 1 }}><Button title="Decline" size="sm" variant="outline" onPress={() => decide.mutate({ participantId: item.id, approve: false })} loading={decide.isPending} /></View>
                   </View>
                 </View>
-              )}
-            />
+              ))}
+              <Text style={styles.sectionTitle}>Confirmed players</Text>
+              {(participantsQuery.data ?? []).filter((participant) => participant.status === 'APPROVED' && participant.role !== 'HOST').map((item) => (
+                <View key={item.id} style={styles.requestCard}>
+                  <Text style={styles.badge}>{[item.player?.firstName, item.player?.lastName].filter(Boolean).join(' ') || 'Player'}{item.role === 'COHOST' ? ' · Co-host' : ''}</Text>
+                  {item.role !== 'COHOST' ? <Button title="Make co-host" size="sm" variant="outline" onPress={() => appointCohost.mutate(item.id)} loading={appointCohost.isPending} /> : null}
+                </View>
+              ))}
+            </ScrollView>
           )}
           <View style={{ padding: spacing.lg }}><Button title="Done" variant="outline" onPress={() => setRequestsGame(null)} /></View>
         </View>

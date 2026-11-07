@@ -41,7 +41,7 @@ export class GamesService {
     if (new Date(input.endsAt) <= new Date(input.startsAt)) throw new BadRequestException("Game end must be after it starts");
     const [game] = await this.db.insert(games).values({ ...input, hostId, startsAt: new Date(input.startsAt), endsAt: new Date(input.endsAt) }).returning();
     if (!game) throw new BadRequestException("Could not create game");
-    await this.db.insert(gameParticipants).values({ gameId: game.id, userId: hostId, status: "APPROVED" });
+    await this.db.insert(gameParticipants).values({ gameId: game.id, userId: hostId, status: "APPROVED", role: "HOST" });
     return game;
   }
 
@@ -161,12 +161,16 @@ export class GamesService {
   async participants(gameId: string, userId: string) {
     const [game] = await this.db.select().from(games).where(eq(games.id, gameId)).limit(1);
     if (!game) throw new NotFoundException("Game not found");
-    if (game.hostId !== userId) throw new ForbiddenException("Only the host can view join requests");
+    if (game.hostId !== userId) {
+      const [cohost] = await this.db.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId), eq(gameParticipants.role, "COHOST"), eq(gameParticipants.status, "APPROVED"))).limit(1);
+      if (!cohost) throw new ForbiddenException("Only the host and co-host can view join requests");
+    }
     return this.db.select({
       id: gameParticipants.id,
       gameId: gameParticipants.gameId,
       userId: gameParticipants.userId,
       status: gameParticipants.status,
+      role: gameParticipants.role,
       message: gameParticipants.message,
       createdAt: gameParticipants.createdAt,
       updatedAt: gameParticipants.updatedAt,
@@ -184,7 +188,10 @@ export class GamesService {
     return this.db.transaction(async (tx) => {
       const [game] = await tx.select().from(games).where(eq(games.id, gameId)).for("update").limit(1);
       if (!game) throw new NotFoundException("Game not found");
-      if (game.hostId !== userId) throw new ForbiddenException("Only the host can manage join requests");
+      if (game.hostId !== userId) {
+        const [cohost] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId), eq(gameParticipants.role, "COHOST"), eq(gameParticipants.status, "APPROVED"))).limit(1);
+        if (!cohost) throw new ForbiddenException("Only the host and co-host can manage join requests");
+      }
       const [participant] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.id, participantId), eq(gameParticipants.gameId, gameId))).limit(1);
       if (!participant || participant.status !== "REQUESTED") throw new NotFoundException("Pending join request not found");
       if (approve) {
@@ -198,6 +205,16 @@ export class GamesService {
       }
       return updated;
     });
+  }
+
+  async makeCohost(gameId: string, participantId: string, hostId: string) {
+    const [game] = await this.db.select().from(games).where(eq(games.id, gameId)).limit(1);
+    if (!game) throw new NotFoundException("Game not found");
+    if (game.hostId !== hostId) throw new ForbiddenException("Only the host can appoint a co-host");
+    const [participant] = await this.db.select().from(gameParticipants).where(and(eq(gameParticipants.id, participantId), eq(gameParticipants.gameId, gameId))).limit(1);
+    if (!participant || participant.status !== "APPROVED" || participant.role === "HOST") throw new BadRequestException("Choose an approved player to appoint as co-host");
+    const [updated] = await this.db.update(gameParticipants).set({ role: "COHOST", updatedAt: new Date() }).where(eq(gameParticipants.id, participantId)).returning();
+    return updated;
   }
 
   async leave(gameId: string, userId: string) {
