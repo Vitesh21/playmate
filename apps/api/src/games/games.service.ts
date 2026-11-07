@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { and, desc, eq, gte, inArray, lte, notInArray, or } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
-import { gameParticipants, games } from "@/db/schema/games";
-import { userBlocks, users } from "@/db/schema/users";
+import { gameInvites, gameParticipants, games } from "@/db/schema/games";
+import { friendships, userBlocks, users } from "@/db/schema/users";
 import { bookings } from "@/db/schema/bookings";
 import { courtSlots } from "@/db/schema/court-slots";
 import type { GameCreateInput, GameSearchInput } from "@playmate/validation";
@@ -43,6 +43,69 @@ export class GamesService {
     if (!game) throw new BadRequestException("Could not create game");
     await this.db.insert(gameParticipants).values({ gameId: game.id, userId: hostId, status: "APPROVED" });
     return game;
+  }
+
+  async invite(gameId: string, inviterId: string, inviteeId: string) {
+    if (inviterId === inviteeId) throw new BadRequestException("You cannot invite yourself");
+    return this.db.transaction(async (tx) => {
+      const [game] = await tx.select().from(games).where(eq(games.id, gameId)).for("update").limit(1);
+      if (!game || game.status === "CANCELLED" || game.status === "COMPLETED") throw new NotFoundException("Game not found or closed");
+      if (game.hostId !== inviterId) throw new ForbiddenException("Only the host can invite players");
+      const [friendship] = await tx.select().from(friendships).where(and(
+        eq(friendships.status, "ACCEPTED"),
+        or(
+          and(eq(friendships.requesterId, inviterId), eq(friendships.addresseeId, inviteeId)),
+          and(eq(friendships.requesterId, inviteeId), eq(friendships.addresseeId, inviterId)),
+        ),
+      )).limit(1);
+      if (!friendship) throw new ForbiddenException("You can invite Playpals only");
+      const [blocked] = await tx.select().from(userBlocks).where(or(
+        and(eq(userBlocks.blockerId, inviterId), eq(userBlocks.blockedUserId, inviteeId)),
+        and(eq(userBlocks.blockerId, inviteeId), eq(userBlocks.blockedUserId, inviterId)),
+      )).limit(1);
+      if (blocked) throw new ForbiddenException("An invite cannot be sent because one player has blocked the other");
+      const [existing] = await tx.select().from(gameInvites).where(and(eq(gameInvites.gameId, gameId), eq(gameInvites.inviteeId, inviteeId))).limit(1);
+      if (existing?.status === "PENDING" || existing?.status === "ACCEPTED") throw new ConflictException("This player already has an active invite");
+      if (existing) {
+        const [updated] = await tx.update(gameInvites).set({ inviterId, status: "PENDING", updatedAt: new Date() }).where(eq(gameInvites.id, existing.id)).returning();
+        return updated;
+      }
+      const [created] = await tx.insert(gameInvites).values({ gameId, inviterId, inviteeId }).returning();
+      return created;
+    });
+  }
+
+  async myInvites(userId: string) {
+    return this.db.select({ invite: gameInvites, game: games }).from(gameInvites)
+      .innerJoin(games, eq(games.id, gameInvites.gameId))
+      .where(and(eq(gameInvites.inviteeId, userId), eq(gameInvites.status, "PENDING")))
+      .orderBy(desc(gameInvites.createdAt));
+  }
+
+  async decideInvite(inviteId: string, userId: string, accept: boolean) {
+    return this.db.transaction(async (tx) => {
+      const [invite] = await tx.select().from(gameInvites).where(and(eq(gameInvites.id, inviteId), eq(gameInvites.inviteeId, userId))).for("update").limit(1);
+      if (!invite || invite.status !== "PENDING") throw new NotFoundException("Pending game invite not found");
+      const [game] = await tx.select().from(games).where(eq(games.id, invite.gameId)).for("update").limit(1);
+      if (!game || game.status === "CANCELLED" || game.status === "COMPLETED" || game.startsAt <= new Date()) throw new BadRequestException("This game is no longer available");
+      if (accept) {
+        const [blocked] = await tx.select().from(userBlocks).where(or(
+          and(eq(userBlocks.blockerId, userId), eq(userBlocks.blockedUserId, game.hostId)),
+          and(eq(userBlocks.blockerId, game.hostId), eq(userBlocks.blockedUserId, userId)),
+        )).limit(1);
+        if (blocked) throw new ForbiddenException("You cannot join because one player has blocked the other");
+        const [existing] = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, game.id), eq(gameParticipants.userId, userId))).limit(1);
+        const approved = await tx.select().from(gameParticipants).where(and(eq(gameParticipants.gameId, game.id), eq(gameParticipants.status, "APPROVED"))).limit(game.maxPlayers);
+        const full = game.status === "FULL" || approved.length >= game.maxPlayers;
+        const participantStatus = full ? "WAITLISTED" : "APPROVED";
+        if (existing && !["LEFT", "DECLINED"].includes(existing.status)) throw new ConflictException("You already have a place or request for this game");
+        if (existing) await tx.update(gameParticipants).set({ status: participantStatus, updatedAt: new Date() }).where(eq(gameParticipants.id, existing.id));
+        else await tx.insert(gameParticipants).values({ gameId: game.id, userId, status: participantStatus });
+        if (!full && approved.length + 1 >= game.maxPlayers) await tx.update(games).set({ status: "FULL", updatedAt: new Date() }).where(eq(games.id, game.id));
+      }
+      const [updated] = await tx.update(gameInvites).set({ status: accept ? "ACCEPTED" : "DECLINED", updatedAt: new Date() }).where(eq(gameInvites.id, invite.id)).returning();
+      return updated;
+    });
   }
 
   async join(gameId: string, userId: string, message?: string) {

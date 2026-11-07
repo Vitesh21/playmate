@@ -4,6 +4,7 @@ import { createZodDto } from "nestjs-zod";
 import { AuthGuard } from "@/common/auth.guard";
 import { gameCreateSchema, gameSearchSchema } from "@playmate/validation";
 import { GamesService } from "./games.service";
+import { z } from "zod";
 
 class CreateGameDto extends createZodDto(gameCreateSchema) {}
 class SearchGamesDto extends createZodDto(gameSearchSchema) {}
@@ -28,12 +29,35 @@ export class GamesController {
     return { success: true, data: await this.games.mine(req.user.id) };
   }
 
+  @Get("invites")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async invites(@Req() req: any) {
+    return { success: true, data: await this.games.myInvites(req.user.id) };
+  }
+
+  @Patch("invites/:inviteId")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async decideInvite(@Req() req: any, @Param("inviteId") inviteId: string, @Body() body: { accept: boolean }) {
+    const parsed = z.object({ accept: z.boolean() }).parse(body);
+    return { success: true, data: await this.games.decideInvite(inviteId, req.user.id, parsed.accept) };
+  }
+
   @Post()
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Host a public or invite-only game" })
   async create(@Req() req: any, @Body() body: CreateGameDto) {
     return { success: true, data: await this.games.create(req.user.id, gameCreateSchema.parse(body)) };
+  }
+
+  @Post(":id/invites")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async invite(@Req() req: any, @Param("id") id: string, @Body() body: { inviteeId: string }) {
+    const parsed = z.object({ inviteeId: z.string().uuid() }).parse(body);
+    return { success: true, data: await this.games.invite(id, req.user.id, parsed.inviteeId) };
   }
 
   @Post(":id/join")

@@ -33,6 +33,7 @@ type Game = {
   sportId: string;
   venueId?: string | null;
   status?: string;
+  visibility?: 'PUBLIC' | 'PRIVATE';
 };
 
 type Participant = { id: string; userId: string; status: string; message?: string | null; player?: { firstName?: string | null; lastName?: string | null; avatarUrl?: string | null } };
@@ -75,6 +76,7 @@ export const GamesScreen: React.FC = () => {
   const [startTime, setStartTime] = useState('18:00');
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [instantJoin, setInstantJoin] = useState(false);
+  const [privateGame, setPrivateGame] = useState(false);
 
   const dateOptions = useMemo(() => Array.from({ length: 7 }, (_, index) => {
     const date = new Date();
@@ -91,6 +93,14 @@ export const GamesScreen: React.FC = () => {
   const mineQuery = useQuery({
     queryKey: ['games', 'mine'],
     queryFn: () => apiClient.get<ApiEnvelope<{ hosted: Game[]; joined: Array<{ game: Game; participation: Participant }> }>>('/games/mine').then((response) => response.data),
+  });
+  const playpalsQuery = useQuery({
+    queryKey: ['friends'],
+    queryFn: () => apiClient.get<ApiEnvelope<Array<{ id: string; firstName?: string; lastName?: string }>>>('/friends').then((response) => response.data ?? []),
+  });
+  const invitesQuery = useQuery({
+    queryKey: ['games', 'invites'],
+    queryFn: () => apiClient.get<ApiEnvelope<Array<{ invite: { id: string }; game: Game }>>>('/games/invites').then((response) => response.data ?? []),
   });
   const participantsQuery = useQuery({
     queryKey: ['games', requestsGame?.id, 'participants'],
@@ -129,7 +139,7 @@ export const GamesScreen: React.FC = () => {
         startsAt: startsAt.toISOString(),
         endsAt: endsAt.toISOString(),
         maxPlayers: totalPlayers,
-        visibility: 'PUBLIC',
+        visibility: privateGame ? 'PRIVATE' : 'PUBLIC',
         instantJoin,
         costPerPlayer: price,
       });
@@ -142,8 +152,9 @@ export const GamesScreen: React.FC = () => {
       setPlayers('4');
       setCost('0');
       setInstantJoin(false);
+      setPrivateGame(false);
       void queryClient.invalidateQueries({ queryKey: ['games'] });
-      Alert.alert('Game posted', 'Your game is now visible to nearby players. You can review join requests from My games.');
+      Alert.alert('Game posted', privateGame ? 'Your invite-only game is ready. Invite your Playpals from My games.' : 'Your game is now visible to nearby players. You can review join requests from My games.');
     },
     onError: (error) => Alert.alert('Could not post game', explainError(error)),
   });
@@ -164,6 +175,19 @@ export const GamesScreen: React.FC = () => {
     },
     onError: (error) => Alert.alert('Could not leave game', explainError(error)),
   });
+  const decideInvite = useMutation({
+    mutationFn: ({ inviteId, accept }: { inviteId: string; accept: boolean }) => apiClient.patch(`/games/invites/${inviteId}`, { accept }),
+    onSuccess: () => { void invitesQuery.refetch(); void refresh(); },
+    onError: (error) => Alert.alert('Could not update invite', explainError(error)),
+  });
+  const sendInvite = (game: Game) => {
+    const pals = playpalsQuery.data ?? [];
+    if (!pals.length) { Alert.alert('Add Playpals first', 'You can invite accepted Playpals to a game.'); return; }
+    Alert.alert('Invite a Playpal', `Choose who to invite to ${game.title}.`, [
+      ...pals.slice(0, 4).map((pal) => ({ text: [pal.firstName, pal.lastName].filter(Boolean).join(' ') || 'Playpal', onPress: () => { void apiClient.post(`/games/${game.id}/invites`, { inviteeId: pal.id }).then(() => Alert.alert('Invite sent', 'Your Playpal can accept it from Find a game.')).catch((error) => Alert.alert('Could not send invite', explainError(error))); } })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
 
   const styles = StyleSheet.create({
     page: { flex: 1, backgroundColor: colors.background.screen },
@@ -210,6 +234,19 @@ export const GamesScreen: React.FC = () => {
           <Text style={styles.gameTitle}>{game.title}</Text>
           <Text style={styles.detail}>{new Date(game.startsAt).toLocaleString()} · {game.status === 'FULL' ? 'Full' : 'Open'}</Text>
           <Button title="Manage join requests" variant="outline" onPress={() => setRequestsGame(game)} />
+          <Button title="Invite a Playpal" variant="outline" onPress={() => sendInvite(game)} />
+        </View>
+      ))}
+
+      {invitesQuery.data?.length ? <Text style={styles.sectionTitle}>Game invites</Text> : null}
+      {invitesQuery.data?.map(({ invite, game }) => (
+        <View key={invite.id} style={styles.card}>
+          <Text style={styles.gameTitle}>{game.title}</Text>
+          <Text style={styles.detail}>{new Date(game.startsAt).toLocaleString()} · Invite only</Text>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}><Button title="Accept" onPress={() => decideInvite.mutate({ inviteId: invite.id, accept: true })} loading={decideInvite.isPending} /></View>
+            <View style={{ flex: 1 }}><Button title="Decline" variant="outline" onPress={() => decideInvite.mutate({ inviteId: invite.id, accept: false })} loading={decideInvite.isPending} /></View>
+          </View>
         </View>
       ))}
 
@@ -302,10 +339,16 @@ export const GamesScreen: React.FC = () => {
               <Choice label="Join instantly" selected={instantJoin} onPress={() => setInstantJoin(true)} />
             </View>
 
+            <Text style={styles.label}>Who can see this game?</Text>
+            <View style={styles.chips}>
+              <Choice label="Public" detail="Anyone can find it" selected={!privateGame} onPress={() => setPrivateGame(false)} />
+              <Choice label="Invite only" detail="Only invited Playpals" selected={privateGame} onPress={() => setPrivateGame(true)} />
+            </View>
+
             <Text style={styles.label}>Notes (optional)</Text>
             <TextInput style={[styles.field, { minHeight: 88, textAlignVertical: 'top' }]} placeholder="Skill level, what to bring, or other details" placeholderTextColor={colors.text.tertiary} value={notes} onChangeText={setNotes} maxLength={1000} multiline />
 
-            <Button title="Post public game" onPress={() => create.mutate()} loading={create.isPending} disabled={create.isPending || sports.length === 0} />
+            <Button title={privateGame ? 'Create invite-only game' : 'Post public game'} onPress={() => create.mutate()} loading={create.isPending} disabled={create.isPending || sports.length === 0} />
             <Button title="Cancel" variant="outline" onPress={() => setShowHost(false)} />
           </ScrollView>
         </KeyboardAvoidingView>
