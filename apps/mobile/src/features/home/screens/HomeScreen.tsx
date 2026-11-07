@@ -12,7 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@theme/index';
-import { useSports, useVenues, VenueCard } from '@features/venues';
+import { useSports, useVenues, useFavoriteVenues, useToggleFavoriteVenue, VenueCard } from '@features/venues';
 import { Button, EmptyState, ErrorState, LoadingState } from '@components/ui';
 import { useAuthStore } from '@store/auth.store';
 import type { HomeStackParamList } from '@navigation/types';
@@ -35,6 +35,7 @@ export const HomeScreen: React.FC = () => {
   const [minRating, setMinRating] = useState<number | undefined>();
   const [availableNow, setAvailableNow] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
 
   const sportsQuery = useSports();
   const venuesQuery = useVenues({
@@ -48,9 +49,15 @@ export const HomeScreen: React.FC = () => {
     minRating,
     availableNow: availableNow || undefined,
   });
+  const favoritesQuery = useFavoriteVenues();
+  const toggleFavorite = useToggleFavoriteVenue();
 
   const sports: Sport[] = sportsQuery.data ?? [];
-  const venues: Venue[] = venuesQuery.data?.items ?? [];
+  const favoriteEntries = favoritesQuery.data ?? [];
+  const favoriteIds = new Set(favoriteEntries.map(({ venue }) => venue.id));
+  const venues: Venue[] = showFavorites
+    ? favoriteEntries.map(({ venue }) => venue)
+    : venuesQuery.data?.items ?? [];
 
   const sportNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -93,6 +100,8 @@ export const HomeScreen: React.FC = () => {
     filterChipActive: { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
     priceRow: { flexDirection: 'row', gap: spacing.sm },
     priceField: { flex: 1, borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, color: colors.text.primary, backgroundColor: colors.background.primary },
+    favoriteToggle: { alignSelf: 'flex-end', marginTop: -spacing.sm, marginBottom: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.full, backgroundColor: colors.background.primary, borderWidth: 1, borderColor: colors.border.light },
+    favoriteToggleText: { ...typography.caption, color: colors.primary[700], fontWeight: '700' },
   });
 
   const renderHeader = () => (
@@ -102,6 +111,10 @@ export const HomeScreen: React.FC = () => {
           {user?.firstName ? `Hey ${user.firstName}` : 'Find your next game'}
         </Text>
         <Text style={s.subtitle}>Book a court, we&apos;ll bring the gear.</Text>
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: !showFavorites }} style={[s.filterToggle, !showFavorites && s.chipActive]} onPress={() => setShowFavorites(false)}><Text style={s.filterText}>Explore venues</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: showFavorites }} style={[s.filterToggle, showFavorites && s.chipActive]} onPress={() => setShowFavorites(true)}><Text style={s.filterText}>♥ Saved ({favoriteEntries.length})</Text></Pressable>
+        </View>
         <TextInput
           accessibilityLabel="Search venues or city"
           style={s.searchField}
@@ -163,29 +176,28 @@ export const HomeScreen: React.FC = () => {
       />
 
       <Text style={s.results}>
-        {venuesQuery.isSuccess ? `${venues.length} venue${venues.length === 1 ? '' : 's'}` : ' '}
+        {(showFavorites ? favoritesQuery.isSuccess : venuesQuery.isSuccess) ? `${venues.length} venue${venues.length === 1 ? '' : 's'}${showFavorites ? ' saved' : ''}` : ' '}
       </Text>
     </View>
   );
 
   const renderEmpty = () => {
-    if (venuesQuery.isLoading) return <LoadingState label="Finding venues…" style={s.centered} />;
-    if (venuesQuery.isError) {
+    if (showFavorites && favoritesQuery.isLoading) return <LoadingState label="Loading saved venues…" style={s.centered} />;
+    if (!showFavorites && venuesQuery.isLoading) return <LoadingState label="Finding venues…" style={s.centered} />;
+    if ((showFavorites && favoritesQuery.isError) || (!showFavorites && venuesQuery.isError)) {
       return (
         <ErrorState
-          title="Couldn't load venues"
-          description="Check that the API is running and reachable from your device."
+          title={showFavorites ? "Couldn't load saved venues" : "Couldn't load venues"}
+          description="Check your connection and try again."
           style={s.centered}
-          action={
-            <Button title="Retry" variant="outline" onPress={() => venuesQuery.refetch()} />
-          }
+          action={<Button title="Retry" variant="outline" onPress={() => void (showFavorites ? favoritesQuery.refetch() : venuesQuery.refetch())} />}
         />
       );
     }
     return (
       <EmptyState
-        title="No venues found"
-        description={sportId ? 'Try a different sport.' : 'No venues have been added yet.'}
+        title={showFavorites ? 'No saved venues yet' : 'No venues found'}
+        description={showFavorites ? 'Save venues with the heart button and they will be easy to find here.' : sportId ? 'Try a different sport.' : 'No venues have been added yet.'}
         style={s.centered}
       />
     );
@@ -205,12 +217,21 @@ export const HomeScreen: React.FC = () => {
             sportName={sportNameById.get(item.sportId)}
             onPress={() => navigation.navigate('VenueDetail', { venueId: item.id })}
           />
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={favoriteIds.has(item.id) ? `Remove ${item.name} from saved venues` : `Save ${item.name}`}
+            disabled={toggleFavorite.isPending}
+            style={s.favoriteToggle}
+            onPress={() => toggleFavorite.mutate({ venueId: item.id, isFavorite: favoriteIds.has(item.id) })}
+          >
+            <Text style={s.favoriteToggleText}>{favoriteIds.has(item.id) ? '♥ Saved' : '♡ Save venue'}</Text>
+          </TouchableOpacity>
         </View>
       )}
       refreshControl={
         <RefreshControl
-          refreshing={venuesQuery.isRefetching}
-          onRefresh={() => { void venuesQuery.refetch(); }}
+          refreshing={venuesQuery.isRefetching || favoritesQuery.isRefetching}
+          onRefresh={() => { void venuesQuery.refetch(); void favoritesQuery.refetch(); }}
           tintColor={colors.primary[600]}
         />
       }

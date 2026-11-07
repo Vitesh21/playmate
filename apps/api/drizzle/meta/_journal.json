@@ -71,6 +71,13 @@
       "when": 1794614400000,
       "tag": "0009_cancellation_policy_refunds",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794700800000,
+      "tag": "0010_venue_favorites",
+      "breakpoints": true
     }
   ]
 }

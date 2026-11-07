@@ -38,6 +38,14 @@ export class VenuesController {
     return { success: true, data };
   }
 
+  @Get("favorites")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List the current user's favorite venues" })
+  async findFavorites(@Req() req: any) {
+    return { success: true, data: await this.venuesService.listFavorites(req.user.id) };
+  }
+
   @Get("slug/:slug")
   @ApiOperation({ summary: "Get venue by URL-safe slug" })
   @ApiParam({ name: "slug", description: "Venue slug" })
@@ -60,6 +68,22 @@ export class VenuesController {
   async getCourts(@Param("id") id: string) {
     const data = await this.venuesService.getCourts(id);
     return { success: true, data };
+  }
+
+  @Post(":id/favorite")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Save a venue to favorites" })
+  async addFavorite(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.venuesService.addFavorite(req.user.id, id) };
+  }
+
+  @Delete(":id/favorite")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Remove a venue from favorites" })
+  async removeFavorite(@Req() req: any, @Param("id") id: string) {
+    return { success: true, data: await this.venuesService.removeFavorite(req.user.id, id) };
   }
 
   @Post()

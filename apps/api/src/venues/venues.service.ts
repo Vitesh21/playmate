@@ -5,6 +5,7 @@ import { venues, type NewVenue } from "@/db/schema/venues";
 import { courts } from "@/db/schema/courts";
 import { courtSlots } from "@/db/schema/court-slots";
 import { reviews } from "@/db/schema/reviews";
+import { venueFavorites } from "@/db/schema/venue-favorites";
 import type {
   VenueCreateInput,
   VenueUpdateInput,
@@ -164,6 +165,25 @@ export class VenuesService {
       .from(venues)
       .where(eq(venues.ownerId, ownerId))
       .orderBy(desc(venues.createdAt));
+  }
+
+  async listFavorites(userId: string) {
+    return this.db.select({ venue: venues, favoritedAt: venueFavorites.createdAt })
+      .from(venueFavorites)
+      .innerJoin(venues, eq(venues.id, venueFavorites.venueId))
+      .where(and(eq(venueFavorites.userId, userId), eq(venues.isActive, true), eq(venues.verificationStatus, "APPROVED")))
+      .orderBy(desc(venueFavorites.createdAt));
+  }
+
+  async addFavorite(userId: string, venueId: string) {
+    await this.findById(venueId);
+    await this.db.insert(venueFavorites).values({ userId, venueId }).onConflictDoNothing();
+    return { venueId, isFavorite: true };
+  }
+
+  async removeFavorite(userId: string, venueId: string) {
+    await this.db.delete(venueFavorites).where(and(eq(venueFavorites.userId, userId), eq(venueFavorites.venueId, venueId)));
+    return { venueId, isFavorite: false };
   }
 
   async pendingVerification() {

@@ -8,6 +8,8 @@ export {
   useMyVenues,
   useCreateVenue,
   useUpdateVenue,
+  useFavoriteVenues,
+  useToggleFavoriteVenue,
 } from './hooks/useVenues';
 export { VenueCard } from './components/VenueCard';
 export { default as ManageVenuesScreen } from './screens/ManageVenuesScreen';

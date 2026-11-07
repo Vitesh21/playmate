@@ -174,6 +174,30 @@ export function useUpdateVenue() {
   });
 }
 
+export function useFavoriteVenues(options?: Omit<UseQueryOptions<Array<{ venue: Venue; favoritedAt: string }>>, 'queryKey' | 'queryFn'>) {
+  return useQuery<Array<{ venue: Venue; favoritedAt: string }>>({
+    queryKey: [...VENUE_KEYS.all, 'favorites'],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<Array<{ venue: Venue; favoritedAt: string }>>>('/venues/favorites');
+      return res.data ?? [];
+    },
+    ...options,
+  });
+}
+
+export function useToggleFavoriteVenue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ venueId, isFavorite }: { venueId: string; isFavorite: boolean }) => {
+      const request = isFavorite
+        ? apiClient.delete<ApiResponse<{ venueId: string; isFavorite: boolean }>>(`/venues/${venueId}/favorite`)
+        : apiClient.post<ApiResponse<{ venueId: string; isFavorite: boolean }>>(`/venues/${venueId}/favorite`);
+      return (await request).data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [...VENUE_KEYS.all, 'favorites'] }),
+  });
+}
+
 export type CreateCourtPayload = {
   venueId: string;
   name: string;

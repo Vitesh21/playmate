@@ -11,6 +11,9 @@ const mockGetCourts = jest.fn();
 const mockCreate = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
+const mockListFavorites = jest.fn();
+const mockAddFavorite = jest.fn();
+const mockRemoveFavorite = jest.fn();
 const mockGetUser = jest.fn();
 
 jest.mock("@/venues/venues.service", () => ({
@@ -22,6 +25,9 @@ jest.mock("@/venues/venues.service", () => ({
     create: mockCreate,
     update: mockUpdate,
     remove: mockRemove,
+    listFavorites: mockListFavorites,
+    addFavorite: mockAddFavorite,
+    removeFavorite: mockRemoveFavorite,
   })),
 }));
 
@@ -118,6 +124,33 @@ describe("Venues routes (e2e)", () => {
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveLength(2);
       expect(res.body.data[0].name).toBe("Court 1");
+    });
+  });
+
+  describe("saved venue favorites", () => {
+    it("requires authentication to list saved venues", async () => {
+      const res = await request(app.getHttpServer()).get("/venues/favorites");
+      expect(res.status).toBe(401);
+      expect(mockListFavorites).not.toHaveBeenCalled();
+    });
+
+    it("lists only the current player's saved venues", async () => {
+      mockListFavorites.mockResolvedValue([{ venue: VENUE, favoritedAt: "2026-11-07T10:00:00.000Z" }]);
+      const res = await request(app.getHttpServer()).get("/venues/favorites").set(authBearer(VALID_VENUE_OWNER));
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].venue.id).toBe("v-1");
+      expect(mockListFavorites).toHaveBeenCalledWith(VALID_VENUE_OWNER.id);
+    });
+
+    it("saves and removes a venue for the authenticated player", async () => {
+      mockAddFavorite.mockResolvedValue({ venueId: "v-1", isFavorite: true });
+      mockRemoveFavorite.mockResolvedValue({ venueId: "v-1", isFavorite: false });
+      const added = await request(app.getHttpServer()).post("/venues/v-1/favorite").set(authBearer(VALID_VENUE_OWNER));
+      const removed = await request(app.getHttpServer()).delete("/venues/v-1/favorite").set(authBearer(VALID_VENUE_OWNER));
+      expect(added.status).toBe(201);
+      expect(removed.status).toBe(200);
+      expect(mockAddFavorite).toHaveBeenCalledWith(VALID_VENUE_OWNER.id, "v-1");
+      expect(mockRemoveFavorite).toHaveBeenCalledWith(VALID_VENUE_OWNER.id, "v-1");
     });
   });
 
