@@ -46,12 +46,14 @@ export class GamesService {
     return game;
   }
 
-  async invite(gameId: string, inviterId: string, inviteeId: string) {
+  async createInvite(inviterId: string, gameId: string, inviteeId: string, message?: string | null) {
     if (inviterId === inviteeId) throw new BadRequestException("You cannot invite yourself");
     return this.db.transaction(async (tx) => {
       const [game] = await tx.select().from(games).where(eq(games.id, gameId)).for("update").limit(1);
       if (!game || game.status === "CANCELLED" || game.status === "COMPLETED") throw new NotFoundException("Game not found or closed");
       if (game.hostId !== inviterId) throw new ForbiddenException("Only the host can invite players");
+      const [target] = await tx.select({ id: users.id }).from(users).where(eq(users.id, inviteeId)).limit(1);
+      if (!target) throw new NotFoundException("Player not found");
       const [friendship] = await tx.select().from(friendships).where(and(
         eq(friendships.status, "ACCEPTED"),
         or(
@@ -68,12 +70,16 @@ export class GamesService {
       const [existing] = await tx.select().from(gameInvites).where(and(eq(gameInvites.gameId, gameId), eq(gameInvites.inviteeId, inviteeId))).limit(1);
       if (existing?.status === "PENDING" || existing?.status === "ACCEPTED") throw new ConflictException("This player already has an active invite");
       if (existing) {
-        const [updated] = await tx.update(gameInvites).set({ inviterId, status: "PENDING", updatedAt: new Date() }).where(eq(gameInvites.id, existing.id)).returning();
+        const [updated] = await tx.update(gameInvites).set({ inviterId, message: message ?? null, status: "PENDING", updatedAt: new Date() }).where(eq(gameInvites.id, existing.id)).returning();
         return updated;
       }
-      const [created] = await tx.insert(gameInvites).values({ gameId, inviterId, inviteeId }).returning();
+      const [created] = await tx.insert(gameInvites).values({ gameId, inviterId, inviteeId, message: message ?? null }).returning();
       return created;
     });
+  }
+
+  async invite(gameId: string, inviterId: string, inviteeId: string, message?: string | null) {
+    return this.createInvite(inviterId, gameId, inviteeId, message);
   }
 
   async myInvites(userId: string) {
@@ -100,12 +106,15 @@ export class GamesService {
         const full = game.status === "FULL" || approved.length >= game.maxPlayers;
         const participantStatus = full ? "WAITLISTED" : "APPROVED";
         if (existing && !["LEFT", "DECLINED"].includes(existing.status)) throw new ConflictException("You already have a place or request for this game");
-        if (existing) await tx.update(gameParticipants).set({ status: participantStatus, updatedAt: new Date() }).where(eq(gameParticipants.id, existing.id));
-        else await tx.insert(gameParticipants).values({ gameId: game.id, userId, status: participantStatus });
+        const [participant] = existing
+          ? await tx.update(gameParticipants).set({ status: participantStatus, updatedAt: new Date() }).where(eq(gameParticipants.id, existing.id)).returning()
+          : await tx.insert(gameParticipants).values({ gameId: game.id, userId, status: participantStatus }).returning();
         if (!full && approved.length + 1 >= game.maxPlayers) await tx.update(games).set({ status: "FULL", updatedAt: new Date() }).where(eq(games.id, game.id));
+        const [updatedInvite] = await tx.update(gameInvites).set({ status: "ACCEPTED", updatedAt: new Date() }).where(eq(gameInvites.id, invite.id)).returning();
+        return { invite: updatedInvite, participant: participant ?? null };
       }
       const [updated] = await tx.update(gameInvites).set({ status: accept ? "ACCEPTED" : "DECLINED", updatedAt: new Date() }).where(eq(gameInvites.id, invite.id)).returning();
-      return updated;
+      return { invite: updated, participant: null };
     });
   }
 

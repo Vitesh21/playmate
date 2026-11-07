@@ -8,6 +8,8 @@ import { z } from "zod";
 
 class CreateGameDto extends createZodDto(gameCreateSchema) {}
 class SearchGamesDto extends createZodDto(gameSearchSchema) {}
+const gameInviteSchema = z.object({ inviteeId: z.string().uuid(), message: z.string().max(240).nullable().optional() }).strict();
+class CreateGameInviteDto extends createZodDto(gameInviteSchema) {}
 
 @ApiTags("Games")
 @Controller("games")
@@ -36,6 +38,13 @@ export class GamesController {
     return { success: true, data: await this.games.myInvites(req.user.id) };
   }
 
+  @Get("invites/mine")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async myInvites(@Req() req: any) {
+    return { success: true, data: await this.games.myInvites(req.user.id) };
+  }
+
   @Patch("invites/:inviteId")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
@@ -55,9 +64,26 @@ export class GamesController {
   @Post(":id/invites")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
-  async invite(@Req() req: any, @Param("id") id: string, @Body() body: { inviteeId: string }) {
-    const parsed = z.object({ inviteeId: z.string().uuid() }).parse(body);
-    return { success: true, data: await this.games.invite(id, req.user.id, parsed.inviteeId) };
+  async invite(@Req() req: any, @Param("id") id: string, @Body() body: CreateGameInviteDto) {
+    const parsed = gameInviteSchema.parse(body);
+    const invite = parsed.message === undefined
+      ? await this.games.invite(id, req.user.id, parsed.inviteeId)
+      : await this.games.invite(id, req.user.id, parsed.inviteeId, parsed.message);
+    return { success: true, data: invite };
+  }
+
+  @Post("invites/:inviteId/accept")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async acceptInvite(@Req() req: any, @Param("inviteId") inviteId: string) {
+    return { success: true, data: await this.games.decideInvite(inviteId, req.user.id, true) };
+  }
+
+  @Post("invites/:inviteId/decline")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  async declineInvite(@Req() req: any, @Param("inviteId") inviteId: string) {
+    return { success: true, data: await this.games.decideInvite(inviteId, req.user.id, false) };
   }
 
   @Post(":id/join")

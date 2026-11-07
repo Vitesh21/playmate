@@ -89,13 +89,28 @@ export class UsersService {
 
   async getMyProfile(id: string) {
     const user = await this.findById(id);
+    const stored = user.profile && typeof user.profile === "object" ? user.profile as Record<string, any> : {};
+    const profile = {
+      ...stored,
+      bio: stored.bio ?? user.bio ?? "",
+      homeLocation: stored.homeLocation ?? (user.homeCity ? { city: user.homeCity, area: "" } : undefined),
+      preferredSports: stored.preferredSports ?? user.preferredSports ?? [],
+      skillLevels: stored.skillLevels ?? user.skillLevels ?? {},
+      preferredTimes: stored.preferredTimes ?? user.preferredTimes ?? [],
+      privacy: {
+        ...(stored.privacy ?? {}),
+        profileVisibility: stored.privacy?.profileVisibility ?? (user.profileVisibility === "FRIENDS" ? "PLAYPALS" : user.profileVisibility),
+        showGames: stored.privacy?.showGames ?? user.gamesVisibility !== "PRIVATE",
+        showCalendar: stored.privacy?.showCalendar ?? user.calendarVisibility !== "PRIVATE",
+      },
+    };
     return {
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
       phone: user.phone,
       avatarUrl: user.avatarUrl,
-      profile: user.profile ?? {},
+      profile,
       createdAt: user.createdAt,
     };
   }
@@ -103,11 +118,37 @@ export class UsersService {
   async updateMyProfile(id: string, patch: Record<string, unknown>) {
     const existing = await this.findById(id);
     const profile = existing.profile && typeof existing.profile === "object" ? existing.profile as Record<string, unknown> : {};
+    const homeLocation = (patch.homeLocation && typeof patch.homeLocation === "object" ? patch.homeLocation : undefined) as { city?: string; area?: string } | undefined;
+    const privacyPatch = (patch.privacy && typeof patch.privacy === "object" ? patch.privacy : {}) as Record<string, unknown>;
+    const requestedVisibility = patch.profileVisibility ?? privacyPatch.profileVisibility;
+    const profileVisibility = requestedVisibility === "PLAYPALS" ? "FRIENDS" : requestedVisibility;
+    const gamesVisibility = patch.gamesVisibility ?? (typeof privacyPatch.showGames === "boolean" ? (privacyPatch.showGames ? "PUBLIC" : "PRIVATE") : undefined);
+    const calendarVisibility = patch.calendarVisibility ?? (typeof privacyPatch.showCalendar === "boolean" ? (privacyPatch.showCalendar ? "PUBLIC" : "PRIVATE") : undefined);
+    const storedPatch = { ...patch };
+    if (requestedVisibility !== undefined || Object.keys(privacyPatch).length) {
+      const existingPrivacy = profile.privacy && typeof profile.privacy === "object" ? profile.privacy as Record<string, unknown> : {};
+      storedPatch.privacy = {
+        ...existingPrivacy,
+        ...privacyPatch,
+        ...(requestedVisibility !== undefined ? { profileVisibility: requestedVisibility === "FRIENDS" ? "PLAYPALS" : requestedVisibility } : {}),
+        ...(typeof gamesVisibility === "string" ? { showGames: gamesVisibility !== "PRIVATE" } : {}),
+        ...(typeof calendarVisibility === "string" ? { showCalendar: calendarVisibility !== "PRIVATE" } : {}),
+      };
+    }
     const [updated] = await this.db.update(users).set({
       firstName: typeof patch.firstName === "string" ? patch.firstName.trim() : existing.firstName,
       lastName: typeof patch.lastName === "string" ? patch.lastName.trim() : existing.lastName,
       avatarUrl: typeof patch.avatarUrl === "string" ? patch.avatarUrl : existing.avatarUrl,
-      profile: { ...profile, ...patch },
+      bio: typeof patch.bio === "string" || patch.bio === null ? patch.bio : undefined,
+      homeCity: homeLocation?.city ?? (typeof patch.homeCity === "string" || patch.homeCity === null ? patch.homeCity : undefined),
+      homeState: typeof patch.homeState === "string" || patch.homeState === null ? patch.homeState : undefined,
+      preferredSports: Array.isArray(patch.preferredSports) ? patch.preferredSports as string[] : undefined,
+      skillLevels: patch.skillLevels && typeof patch.skillLevels === "object" ? patch.skillLevels as Record<string, string> : undefined,
+      preferredTimes: Array.isArray(patch.preferredTimes) ? patch.preferredTimes as string[] : undefined,
+      profileVisibility: profileVisibility as any,
+      gamesVisibility: gamesVisibility as any,
+      calendarVisibility: calendarVisibility as any,
+      profile: { ...profile, ...storedPatch },
       updatedAt: new Date(),
     }).where(eq(users.id, id)).returning();
     if (!updated) throw new NotFoundException("Profile not found");
@@ -117,8 +158,10 @@ export class UsersService {
   async publicProfile(id: string, viewerId?: string) {
     const user = await this.findById(id);
     const profile = user.profile && typeof user.profile === "object" ? user.profile as Record<string, any> : {};
-    const visibility = profile.privacy?.profileVisibility ?? "PUBLIC";
-    if (visibility === "PRIVATE") throw new NotFoundException("Player profile not found");
+    const rawVisibility = profile.privacy?.profileVisibility ?? (user.profileVisibility === "FRIENDS" ? "PLAYPALS" : user.profileVisibility);
+    const visibility = rawVisibility ?? "PUBLIC";
+    let isPlaypal = viewerId === id;
+    if (visibility === "PRIVATE" && viewerId !== id) throw new NotFoundException("Player profile not found");
     if (visibility === "PLAYPALS" && viewerId !== id) {
       if (!viewerId) throw new NotFoundException("Player profile not found");
       const [friendship] = await this.db.select().from(friendships).where(and(
@@ -126,14 +169,20 @@ export class UsersService {
         or(and(eq(friendships.requesterId, id), eq(friendships.addresseeId, viewerId)), and(eq(friendships.requesterId, viewerId), eq(friendships.addresseeId, id))),
       )).limit(1);
       if (!friendship) throw new NotFoundException("Player profile not found");
+      isPlaypal = true;
     }
+    const [blocked] = viewerId && viewerId !== id ? await this.db.select().from(userBlocks).where(or(
+      and(eq(userBlocks.blockerId, id), eq(userBlocks.blockedUserId, viewerId)),
+      and(eq(userBlocks.blockerId, viewerId), eq(userBlocks.blockedUserId, id)),
+    )).limit(1) : [];
+    if (blocked) throw new NotFoundException("Player profile not found");
     const participations = await this.db.select({ attendance: gameParticipants.attendance })
       .from(gameParticipants).innerJoin(games, eq(games.id, gameParticipants.gameId))
       .where(and(eq(gameParticipants.userId, id), eq(gameParticipants.status, "APPROVED"), eq(games.status, "COMPLETED")));
     const gamesPlayed = participations.filter((item) => item.attendance === "PRESENT").length;
     const noShows = participations.filter((item) => item.attendance === "NO_SHOW").length;
     const completedAttendance = gamesPlayed + noShows;
-    const reliabilityScore = completedAttendance ? Math.round((gamesPlayed / completedAttendance) * 100) : null;
+    const reliabilityScore = completedAttendance ? Math.round((gamesPlayed / completedAttendance) * 100) : user.reliabilityScore;
 
     const ratingsGivenToPlayer = await this.db.select().from(gameRatings).where(eq(gameRatings.ratedUserId, id));
     const gameIds = [...new Set(ratingsGivenToPlayer.map((rating) => rating.gameId))];
@@ -155,17 +204,54 @@ export class UsersService {
       firstName: user.firstName,
       lastName: user.lastName,
       avatarUrl: user.avatarUrl,
-      bio: visibility === "PUBLIC" ? profile.bio ?? null : null,
-      preferredSports: visibility === "PUBLIC" ? profile.preferredSports ?? [] : [],
-      skillLevels: visibility === "PUBLIC" ? profile.skillLevels ?? {} : {},
-      homeLocation: profile.privacy?.showHomeArea ? profile.homeLocation ?? null : null,
-      gamesPlayed: profile.privacy?.showGames === false ? null : gamesPlayed,
+      bio: profile.bio ?? user.bio ?? null,
+      preferredSports: profile.preferredSports ?? user.preferredSports ?? [],
+      skillLevels: profile.skillLevels ?? user.skillLevels ?? {},
+      preferredTimes: profile.preferredTimes ?? user.preferredTimes ?? [],
+      homeLocation: profile.privacy?.showHomeArea ? profile.homeLocation ?? { city: user.homeCity, state: user.homeState } : null,
+      gamesPlayed: profile.privacy?.showGames === false || (user.gamesVisibility === "FRIENDS" && !isPlaypal) || user.gamesVisibility === "PRIVATE" ? null : gamesPlayed,
+      completedGames: user.completedGames || gamesPlayed,
+      noShowCount: noShows,
+      lateCancelCount: user.lateCancelCount,
+      calendarVisibility: user.calendarVisibility,
       reliabilityScore,
       reliabilitySampleSize: completedAttendance,
       ratingSummary,
       hostRating,
       visibility,
     };
+  }
+
+  async getPlayerProfile(id: string) {
+    const user = await this.findById(id);
+    const profile = await this.getMyProfile(id);
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      avatarUrl: user.avatarUrl,
+      bio: user.bio ?? profile.profile.bio,
+      homeCity: user.homeCity ?? profile.profile.homeLocation?.city ?? null,
+      homeState: user.homeState ?? null,
+      preferredSports: user.preferredSports ?? profile.profile.preferredSports,
+      skillLevels: user.skillLevels ?? profile.profile.skillLevels,
+      preferredTimes: user.preferredTimes ?? profile.profile.preferredTimes,
+      profileVisibility: user.profileVisibility,
+      gamesVisibility: user.gamesVisibility,
+      calendarVisibility: user.calendarVisibility,
+      reliabilityScore: user.reliabilityScore,
+      completedGames: user.completedGames,
+      noShowCount: user.noShowCount,
+      lateCancelCount: user.lateCancelCount,
+    };
+  }
+
+  async updatePlayerProfile(id: string, data: Record<string, unknown>) {
+    return this.updateMyProfile(id, data);
+  }
+
+  async getPublicPlayerProfile(viewerId: string, profileId: string) {
+    return this.publicProfile(profileId, viewerId);
   }
 
   async block(blockerId: string, blockedUserId: string) {
@@ -329,6 +415,15 @@ export class UsersService {
       phone: null,
       avatarUrl: null,
       profile: {},
+      bio: null,
+      homeCity: null,
+      homeState: null,
+      preferredSports: [],
+      skillLevels: {},
+      preferredTimes: [],
+      profileVisibility: "PRIVATE",
+      gamesVisibility: "PRIVATE",
+      calendarVisibility: "PRIVATE",
       updatedAt: new Date(),
     }).where(eq(users.id, id)).returning();
     if (!anonymized) throw new BadRequestException("The account was removed but its profile could not be anonymized");

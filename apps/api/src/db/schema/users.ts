@@ -1,19 +1,3 @@
-/**
- * @file users.ts
- * @description Defines the `users` table schema representing platform users across all roles.
- *
- * Key Relationships:
- * - Referenced by: `venues.ownerId` (venue ownership)
- * - Referenced by: `bookings.userId` (who made the booking)
- * - Referenced by: `products.sellerId` (product seller)
- *
- * DB Guarantees:
- * - Primary key: `id` (UUID v4, auto-generated)
- * - Unique constraint: `email` (globally unique, nullable to support OAuth flows without email)
- * - Role enforcement via Postgres enum `user_role` with default `USER`
- * - Audit timestamps: `createdAt`, `updatedAt` (both auto-set, timezone-aware)
- * - No soft-delete: rows are hard-deleted
- */
 import {
   pgEnum,
   pgTable,
@@ -24,33 +8,45 @@ import {
   jsonb,
   uniqueIndex,
   check,
+  integer,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // Authorization role assigned to each user account, controls feature access
 export const userRoleEnum = pgEnum("user_role", [
-  "USER",        // Regular customer: can book courts, buy products
-  "ADMIN",       // Super admin: full platform access
-  "VENUE_OWNER", // Manages venues, courts, and their slots
-  "SELLER",      // Lists and manages products for sale in the marketplace
+  "USER",
+  "ADMIN",
+  "VENUE_OWNER",
+  "SELLER",
 ]);
 
-// Core user identity table — one row per registered account on the platform
+export const userVisibilityEnum = pgEnum("user_visibility", ["PUBLIC", "FRIENDS", "PRIVATE"]);
+
+// Core user identity plus player-facing profile and trust metadata.
 export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),           // Surrogate primary key, UUID v4 generated at insert
-  email: text("email").unique(),                         // User's email address, globally unique when set
-  firstName: text("first_name"),                         // User's given / first name (display purposes)
-  lastName: text("last_name"),                           // User's family / last name (display purposes)
-  phone: varchar("phone", { length: 20 }),               // Contact phone number, max 20 chars with country code
-  avatarUrl: text("avatar_url"),                         // Public URL to profile avatar / picture image
-  role: userRoleEnum("role").default("USER").notNull(),  // Access-control role, defaults to regular USER
-  profile: jsonb("profile").default({}),                 // Free-form JSON blob for extended profile metadata
-  createdAt: timestamp("created_at", { mode: "date", withTimezone: true })  // Timestamp when user record was created
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })  // Timestamp of last mutation to this row
-    .defaultNow()
-    .notNull(),
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  phone: varchar("phone", { length: 20 }),
+  avatarUrl: text("avatar_url"),
+  role: userRoleEnum("role").default("USER").notNull(),
+  profile: jsonb("profile").default({}),
+  bio: text("bio"),
+  homeCity: text("home_city"),
+  homeState: text("home_state"),
+  preferredSports: jsonb("preferred_sports").$type<string[]>().default([]).notNull(),
+  skillLevels: jsonb("skill_levels").$type<Record<string, string>>().default({}).notNull(),
+  preferredTimes: jsonb("preferred_times").$type<string[]>().default([]).notNull(),
+  profileVisibility: userVisibilityEnum("profile_visibility").default("PUBLIC").notNull(),
+  gamesVisibility: userVisibilityEnum("games_visibility").default("FRIENDS").notNull(),
+  calendarVisibility: userVisibilityEnum("calendar_visibility").default("PRIVATE").notNull(),
+  reliabilityScore: integer("reliability_score").default(100).notNull(),
+  completedGames: integer("completed_games").default(0).notNull(),
+  noShowCount: integer("no_show_count").default(0).notNull(),
+  lateCancelCount: integer("late_cancel_count").default(0).notNull(),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
 });
 
 export const friendshipStatusEnum = pgEnum("friendship_status", ["PENDING", "ACCEPTED", "DECLINED"]);
@@ -92,5 +88,5 @@ export const userReports = pgTable("user_reports", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export type User = typeof users.$inferSelect;   // TypeScript type for a fully selected user row
-export type NewUser = typeof users.$inferInsert; // TypeScript type for an insert payload (excludes auto-gen cols)
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;

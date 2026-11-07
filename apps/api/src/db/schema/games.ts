@@ -19,7 +19,7 @@ import { sports } from "./sports";
 export const gameVisibilityEnum = pgEnum("game_visibility", ["PUBLIC", "PRIVATE"]);
 export const gameStatusEnum = pgEnum("game_status", ["OPEN", "FULL", "CANCELLED", "COMPLETED"]);
 export const gameJoinStatusEnum = pgEnum("game_join_status", ["REQUESTED", "APPROVED", "DECLINED", "WAITLISTED", "LEFT"]);
-export const gameInviteStatusEnum = pgEnum("game_invite_status", ["PENDING", "ACCEPTED", "DECLINED"]);
+export const gameInviteStatusEnum = pgEnum("game_invite_status", ["PENDING", "ACCEPTED", "DECLINED", "CANCELLED"]);
 export const gameParticipantRoleEnum = pgEnum("game_participant_role", ["HOST", "COHOST", "PLAYER"]);
 export const gameAttendanceEnum = pgEnum("game_attendance", ["PRESENT", "NO_SHOW"]);
 
@@ -81,9 +81,11 @@ export const gameInvites = pgTable("game_invites", {
   inviterId: uuid("inviter_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   inviteeId: uuid("invitee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: gameInviteStatusEnum("status").notNull().default("PENDING"),
+  message: text("message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  uniqueGameInvitee: uniqueIndex("game_invites_game_invitee_unique").on(table.gameId, table.inviteeId),
+  uniqueGameInvitee: uniqueIndex("game_invites_unique").on(table.gameId, table.inviteeId),
   inviteeStatus: index("game_invites_invitee_status_idx").on(table.inviteeId, table.status),
+  noSelfInvite: check("game_invites_no_self", sql`${table.inviterId} <> ${table.inviteeId}`),
 }));
