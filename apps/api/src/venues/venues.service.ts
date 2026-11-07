@@ -1,9 +1,10 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { eq, ilike, and, gte, lte, count, desc, inArray, or } from "drizzle-orm";
+import { eq, ilike, and, gte, lte, count, desc, inArray, or, arrayContains, sql } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { venues, type NewVenue } from "@/db/schema/venues";
 import { courts } from "@/db/schema/courts";
 import { courtSlots } from "@/db/schema/court-slots";
+import { reviews } from "@/db/schema/reviews";
 import type {
   VenueCreateInput,
   VenueUpdateInput,
@@ -25,6 +26,10 @@ export class VenuesService {
     const filters: any[] = [eq(venues.isActive, true), eq(venues.verificationStatus, "APPROVED")];
     if (params.sportId) filters.push(eq(venues.sportId, params.sportId));
     if (params.city) filters.push(ilike(venues.city, `%${params.city}%`));
+    if (params.amenities) {
+      const requiredAmenities = params.amenities.split(",").map((item) => item.trim()).filter(Boolean);
+      for (const amenity of requiredAmenities) filters.push(arrayContains(venues.amenities, [amenity]));
+    }
     if (params.search) {
       filters.push(
         or(
@@ -35,15 +40,51 @@ export class VenuesService {
       );
     }
 
-    let query = this.db
+    const courtFilters: any[] = [eq(courts.isActive, true)];
+    if (params.minPrice !== undefined) courtFilters.push(gte(courts.hourlyRate, params.minPrice));
+    if (params.maxPrice !== undefined) courtFilters.push(lte(courts.hourlyRate, params.maxPrice));
+    if (params.courtType) courtFilters.push(ilike(courts.type, params.courtType));
+    if (params.surface) courtFilters.push(ilike(courts.surface, `%${params.surface}%`));
+    if (params.minPrice !== undefined || params.maxPrice !== undefined || params.courtType || params.surface) {
+      const matchingCourts = await this.db.select({ venueId: courts.venueId }).from(courts).where(and(...courtFilters));
+      const venueIds = [...new Set(matchingCourts.map((court) => court.venueId))];
+      if (!venueIds.length) return { items: [], total: 0, page, perPage, totalPages: 0 };
+      filters.push(inArray(venues.id, venueIds));
+    }
+
+    if (params.date || params.availableNow) {
+      const now = new Date();
+      const localNow = new Date(now.getTime() + (params.utcOffsetMinutes ?? 0) * 60_000);
+      const today = localNow.toISOString().slice(0, 10);
+      const timeNow = localNow.toISOString().slice(11, 16);
+      const searchDate = params.availableNow ? today : params.date!;
+      const matchingSlots = await this.db.select({ venueId: courts.venueId }).from(courtSlots)
+        .innerJoin(courts, eq(courts.id, courtSlots.courtId))
+        .where(and(
+          eq(courtSlots.date, searchDate),
+          eq(courtSlots.isAvailable, true),
+          params.availableNow ? lte(courtSlots.startTime, timeNow) : params.startTime ? lte(courtSlots.startTime, params.startTime) : undefined,
+          params.availableNow ? gte(courtSlots.endTime, timeNow) : params.endTime ? gte(courtSlots.endTime, params.endTime) : undefined,
+        ));
+      const availableVenueIds = [...new Set(matchingSlots.map((slot) => slot.venueId))];
+      if (!availableVenueIds.length) return { items: [], total: 0, page, perPage, totalPages: 0 };
+      filters.push(inArray(venues.id, availableVenueIds));
+    }
+
+    if (params.minRating !== undefined) {
+      const rated = await this.db.select({ venueId: reviews.venueId, average: sql<number>`avg(${reviews.rating})` })
+        .from(reviews).where(and(sql`${reviews.venueId} is not null`, eq(reviews.isVerified, true)))
+        .groupBy(reviews.venueId).having(gte(sql`avg(${reviews.rating})`, params.minRating));
+      const ratedVenueIds = rated.map((row) => row.venueId).filter((id): id is string => id !== null);
+      if (!ratedVenueIds.length) return { items: [], total: 0, page, perPage, totalPages: 0 };
+      filters.push(inArray(venues.id, ratedVenueIds));
+    }
+
+    const matchingVenues: any[] = await this.db
       .select()
       .from(venues)
       .where(and(...filters))
-      .orderBy(desc(venues.createdAt))
-      .limit(perPage)
-      .offset(offset);
-
-    const items: any[] = await query;
+      .orderBy(desc(venues.createdAt));
 
     const [totalObj] = await this.db
       .select({ value: count() })
@@ -51,7 +92,25 @@ export class VenuesService {
       .where(filters.length > 0 ? and(...filters) : undefined);
 
     const total = Number(totalObj?.value ?? 0);
-    return { items, total, page, perPage, totalPages: Math.ceil(total / perPage) };
+    let orderedVenues = matchingVenues;
+    if (params.latitude !== undefined && params.longitude !== undefined) {
+      const distance = (venue: any) => {
+        if (venue.latitude == null || venue.longitude == null) return Number.POSITIVE_INFINITY;
+        const radians = (degrees: number) => degrees * Math.PI / 180;
+        const dLat = radians(Number(venue.latitude) - params.latitude!);
+        const dLon = radians(Number(venue.longitude) - params.longitude!);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(params.latitude!)) * Math.cos(radians(Number(venue.latitude))) * Math.sin(dLon / 2) ** 2;
+        return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+      orderedVenues = orderedVenues
+        .map((venue) => ({ venue, distanceKm: distance(venue) }))
+        .filter(({ distanceKm }) => params.radiusKm === undefined || distanceKm <= params.radiusKm)
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .map(({ venue, distanceKm }) => ({ ...venue, distanceKm }));
+    }
+    const filteredTotal = orderedVenues.length;
+    const items = orderedVenues.slice(offset, offset + perPage);
+    return { items, total: params.latitude !== undefined && params.longitude !== undefined ? filteredTotal : total, page, perPage, totalPages: Math.ceil((params.latitude !== undefined && params.longitude !== undefined ? filteredTotal : total) / perPage) };
   }
 
   async findById(id: string) {

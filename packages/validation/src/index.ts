@@ -75,6 +75,14 @@ export const venueSearchSchema = z.object({
     .optional(),
   amenities: z.string().optional(),
   search: z.string().optional(),
+  courtType: z.enum(["INDOOR", "OUTDOOR"]).optional(),
+  surface: z.string().max(80).optional(),
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+  radiusKm: z.coerce.number().positive().max(200).optional(),
+  availableNow: z.coerce.boolean().optional(),
+  utcOffsetMinutes: z.coerce.number().int().min(-720).max(840).optional(),
 });
 
 export const courtCreateSchema = z.object({

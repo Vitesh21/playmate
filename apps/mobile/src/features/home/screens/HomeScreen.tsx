@@ -6,6 +6,8 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  TextInput,
+  Pressable,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -25,9 +27,27 @@ export const HomeScreen: React.FC = () => {
   const user = useAuthStore((s) => s.user);
 
   const [sportId, setSportId] = useState<string | undefined>(undefined);
+  const [searchText, setSearchText] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [courtType, setCourtType] = useState<'INDOOR' | 'OUTDOOR' | undefined>();
+  const [amenity, setAmenity] = useState<string | undefined>();
+  const [minRating, setMinRating] = useState<number | undefined>();
+  const [availableNow, setAvailableNow] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const sportsQuery = useSports();
-  const venuesQuery = useVenues({ sportId });
+  const venuesQuery = useVenues({
+    sportId,
+    search: searchText.trim() || undefined,
+    minPrice: minPrice ? Number(minPrice) : undefined,
+    maxPrice: maxPrice ? Number(maxPrice) : undefined,
+    courtType,
+    amenities: amenity,
+    utcOffsetMinutes: -new Date().getTimezoneOffset(),
+    minRating,
+    availableNow: availableNow || undefined,
+  });
 
   const sports: Sport[] = sportsQuery.data ?? [];
   const venues: Venue[] = venuesQuery.data?.items ?? [];
@@ -63,6 +83,16 @@ export const HomeScreen: React.FC = () => {
     },
     row: { paddingHorizontal: spacing.lg },
     centered: { paddingTop: spacing.xxxxl },
+    searchField: { borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.background.primary, color: colors.text.primary, marginTop: spacing.md, fontSize: 16 },
+    filterBar: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, alignItems: 'center' },
+    filterToggle: { borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+    filterText: { ...typography.caption, color: colors.text.primary, fontWeight: '700' },
+    filterPanel: { marginTop: spacing.sm, padding: spacing.md, gap: spacing.sm, borderRadius: radius.md, backgroundColor: colors.background.primary, borderWidth: 1, borderColor: colors.border.light },
+    filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    filterChip: { borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+    filterChipActive: { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+    priceRow: { flexDirection: 'row', gap: spacing.sm },
+    priceField: { flex: 1, borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, color: colors.text.primary, backgroundColor: colors.background.primary },
   });
 
   const renderHeader = () => (
@@ -72,6 +102,37 @@ export const HomeScreen: React.FC = () => {
           {user?.firstName ? `Hey ${user.firstName}` : 'Find your next game'}
         </Text>
         <Text style={s.subtitle}>Book a court, we&apos;ll bring the gear.</Text>
+        <TextInput
+          accessibilityLabel="Search venues or city"
+          style={s.searchField}
+          placeholder="Search venues or city"
+          placeholderTextColor={colors.text.tertiary}
+          value={searchText}
+          onChangeText={setSearchText}
+          returnKeyType="search"
+        />
+        <View style={s.filterBar}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFilters }} style={s.filterToggle} onPress={() => setShowFilters((value) => !value)}>
+            <Text style={s.filterText}>{showFilters ? 'Hide filters' : 'Filters'}</Text>
+          </Pressable>
+          {(courtType || amenity || minPrice || maxPrice || minRating || availableNow) ? <Pressable accessibilityRole="button" onPress={() => { setCourtType(undefined); setAmenity(undefined); setMinPrice(''); setMaxPrice(''); setMinRating(undefined); setAvailableNow(false); }}><Text style={s.filterText}>Clear filters</Text></Pressable> : null}
+        </View>
+        {showFilters ? <View style={s.filterPanel}>
+          <Text style={s.filterText}>Hourly price (₹)</Text>
+          <View style={s.priceRow}>
+            <TextInput accessibilityLabel="Minimum hourly price" style={s.priceField} keyboardType="number-pad" placeholder="Min" placeholderTextColor={colors.text.tertiary} value={minPrice} onChangeText={setMinPrice} />
+            <TextInput accessibilityLabel="Maximum hourly price" style={s.priceField} keyboardType="number-pad" placeholder="Max" placeholderTextColor={colors.text.tertiary} value={maxPrice} onChangeText={setMaxPrice} />
+          </View>
+          <Text style={s.filterText}>Court type</Text>
+          <View style={s.filterRow}>{(['INDOOR', 'OUTDOOR'] as const).map((type) => <Pressable key={type} accessibilityRole="button" accessibilityState={{ selected: courtType === type }} style={[s.filterChip, courtType === type && s.filterChipActive]} onPress={() => setCourtType(courtType === type ? undefined : type)}><Text style={s.filterText}>{type === 'INDOOR' ? 'Indoor' : 'Outdoor'}</Text></Pressable>)}</View>
+          <Text style={s.filterText}>Availability and rating</Text>
+          <View style={s.filterRow}>
+            <Pressable accessibilityRole="button" accessibilityState={{ selected: availableNow }} style={[s.filterChip, availableNow && s.filterChipActive]} onPress={() => setAvailableNow((value) => !value)}><Text style={s.filterText}>Available now</Text></Pressable>
+            {[4, 4.5].map((rating) => <Pressable key={rating} accessibilityRole="button" accessibilityState={{ selected: minRating === rating }} style={[s.filterChip, minRating === rating && s.filterChipActive]} onPress={() => setMinRating(minRating === rating ? undefined : rating)}><Text style={s.filterText}>{rating}+ ★</Text></Pressable>)}
+          </View>
+          <Text style={s.filterText}>Amenities</Text>
+          <View style={s.filterRow}>{['Parking', 'Washroom', 'Lights', 'Equipment rental', 'Changing rooms'].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: amenity === value }} style={[s.filterChip, amenity === value && s.filterChipActive]} onPress={() => setAmenity(amenity === value ? undefined : value)}><Text style={s.filterText}>{value}</Text></Pressable>)}</View>
+        </View> : null}
         <View style={{ marginTop: spacing.md }}>
           <Button title="Find or host a game" variant="outline" onPress={() => navigation.navigate('Games')} />
           <View style={{ height: spacing.sm }} />
