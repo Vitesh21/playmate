@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
 import { and, eq } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { users, userBlocks, type NewUser } from "@/db/schema/users";
@@ -46,7 +46,6 @@ export class UsersService {
 
     const existing = await this.findById(authUser.id).catch(() => null);
     if (existing) {
-      // Keep the local role in sync with the token's authoritative role.
       if (tokenRole && existing.role !== tokenRole) {
         const [updated] = await this.db
           .update(users)
@@ -84,6 +83,66 @@ export class UsersService {
     return updated;
   }
 
+  async getPlayerProfile(id: string) {
+    const [user] = await this.db.select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      avatarUrl: users.avatarUrl,
+      bio: users.bio,
+      homeCity: users.homeCity,
+      homeState: users.homeState,
+      preferredSports: users.preferredSports,
+      skillLevels: users.skillLevels,
+      preferredTimes: users.preferredTimes,
+      profileVisibility: users.profileVisibility,
+      gamesVisibility: users.gamesVisibility,
+      calendarVisibility: users.calendarVisibility,
+      reliabilityScore: users.reliabilityScore,
+      completedGames: users.completedGames,
+      noShowCount: users.noShowCount,
+      lateCancelCount: users.lateCancelCount,
+    }).from(users).where(eq(users.id, id)).limit(1);
+    if (!user) throw new NotFoundException("User not found");
+    return user;
+  }
+
+  async updatePlayerProfile(id: string, data: {
+    bio?: string | null;
+    homeCity?: string | null;
+    homeState?: string | null;
+    preferredSports?: string[];
+    skillLevels?: Record<string, string>;
+    preferredTimes?: string[];
+    profileVisibility?: "PUBLIC" | "FRIENDS" | "PRIVATE";
+    gamesVisibility?: "PUBLIC" | "FRIENDS" | "PRIVATE";
+    calendarVisibility?: "PUBLIC" | "FRIENDS" | "PRIVATE";
+  }) {
+    const [updated] = await this.db.update(users).set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id)).returning({ id: users.id });
+    if (!updated) throw new NotFoundException("User not found");
+    return this.getPlayerProfile(id);
+  }
+
+  async getPublicPlayerProfile(viewerId: string, profileId: string) {
+    const [blocked] = await this.db.select({ id: userBlocks.id }).from(userBlocks).where(and(
+      eq(userBlocks.blockerId, viewerId), eq(userBlocks.blockedUserId, profileId),
+    )).limit(1);
+    const [blockedBy] = await this.db.select({ id: userBlocks.id }).from(userBlocks).where(and(
+      eq(userBlocks.blockerId, profileId), eq(userBlocks.blockedUserId, viewerId),
+    )).limit(1);
+    if (blocked || blockedBy) throw new ForbiddenException("This profile is unavailable");
+
+    const profile = await this.getPlayerProfile(profileId);
+    if (profileId !== viewerId && profile.profileVisibility !== "PUBLIC") {
+      throw new ForbiddenException("This profile is not public");
+    }
+    const { profileVisibility: _profileVisibility, gamesVisibility: _gamesVisibility,
+      calendarVisibility: _calendarVisibility, noShowCount: _noShowCount,
+      lateCancelCount: _lateCancelCount, ...publicFields } = profile;
+    return publicFields;
+  }
+
   async block(blockerId: string, blockedUserId: string) {
     if (blockerId === blockedUserId) throw new BadRequestException("You cannot block your own account");
     const [block] = await this.db.insert(userBlocks).values({ blockerId, blockedUserId }).onConflictDoNothing().returning();
@@ -101,8 +160,6 @@ export class UsersService {
     const { error: authError } = await this.supabase.admin.auth.admin.deleteUser(id);
     if (authError) throw new BadRequestException("Could not delete the authentication account");
 
-    // Preserve booking/order/payment history for accounting and dispute handling,
-    // while removing direct profile data from the application database.
     const [anonymized] = await this.db.update(users).set({
       email: `deleted+${id}@account.invalid`,
       firstName: "Deleted",
@@ -110,6 +167,12 @@ export class UsersService {
       phone: null,
       avatarUrl: null,
       profile: {},
+      bio: null,
+      homeCity: null,
+      homeState: null,
+      preferredSports: [],
+      skillLevels: {},
+      preferredTimes: [],
       updatedAt: new Date(),
     }).where(eq(users.id, id)).returning();
     if (!anonymized) throw new BadRequestException("The account was removed but its profile could not be anonymized");
