@@ -13,7 +13,7 @@ import type { VenueSearchInput } from '@playmate/validation';
 const VENUE_KEYS = {
   all: ['venues'] as const,
   lists: () => [...VENUE_KEYS.all, 'list'] as const,
-  list: (filters: VenueSearchInput) => [...VENUE_KEYS.lists(), filters] as const,
+  list: (filters: VenueSearchInput & { page?: number; perPage?: number }) => [...VENUE_KEYS.lists(), filters] as const,
   details: () => [...VENUE_KEYS.all, 'detail'] as const,
   detail: (id: string) => [...VENUE_KEYS.details(), id] as const,
   courts: (venueId: string) => [...VENUE_KEYS.detail(venueId), 'courts'] as const,
@@ -36,7 +36,7 @@ export function useSports(options?: Omit<UseQueryOptions<Sport[]>, 'queryKey' | 
 }
 
 export function useVenues(
-  filters: VenueSearchInput = {},
+  filters: VenueSearchInput & { page?: number; perPage?: number } = {},
   options?: Omit<UseQueryOptions<PaginatedResponse<Venue>>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery<PaginatedResponse<Venue>>({

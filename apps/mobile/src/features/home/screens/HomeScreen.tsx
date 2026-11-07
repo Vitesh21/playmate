@@ -1,14 +1,19 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   RefreshControl,
   TextInput,
   Pressable,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
+import MapView, { Marker, type Region } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@theme/index';
@@ -29,6 +34,7 @@ export const HomeScreen: React.FC = () => {
   const { colors, spacing, radius, typography } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const user = useAuthStore((s) => s.user);
+  const mapRef = useRef<MapView>(null);
 
   const [sportId, setSportId] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
@@ -41,6 +47,13 @@ export const HomeScreen: React.FC = () => {
   const [surface, setSurface] = useState<string | undefined>();
   const [searchDate, setSearchDate] = useState<string | undefined>();
   const [timeWindow, setTimeWindow] = useState<'morning' | 'afternoon' | 'evening' | undefined>();
+  const [showMap, setShowMap] = useState(false);
+  const [mapRegion, setMapRegion] = useState<Region>({ latitude: 20.5937, longitude: 78.9629, latitudeDelta: 20, longitudeDelta: 20 });
+  const [hasMapMoved, setHasMapMoved] = useState(false);
+  const [searchArea, setSearchArea] = useState<{ latitude: number; longitude: number; radiusKm: number } | undefined>();
+  const [selectedMapVenue, setSelectedMapVenue] = useState<Venue | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
 
@@ -59,6 +72,10 @@ export const HomeScreen: React.FC = () => {
     utcOffsetMinutes: -new Date().getTimezoneOffset(),
     minRating,
     availableNow: availableNow || undefined,
+    latitude: searchArea?.latitude,
+    longitude: searchArea?.longitude,
+    radiusKm: searchArea?.radiusKm,
+    perPage: showMap ? 100 : undefined,
   });
   const favoritesQuery = useFavoriteVenues();
   const toggleFavorite = useToggleFavoriteVenue();
@@ -69,6 +86,35 @@ export const HomeScreen: React.FC = () => {
   const venues: Venue[] = showFavorites
     ? favoriteEntries.map(({ venue }) => venue)
     : venuesQuery.data?.items ?? [];
+
+  useEffect(() => {
+    if (hasMapMoved || !venues.length) return;
+    const firstLocatedVenue = venues.find((venue) => Number.isFinite(Number(venue.latitude)) && Number.isFinite(Number(venue.longitude)) && venue.latitude != null && venue.longitude != null);
+    if (firstLocatedVenue) {
+      setMapRegion({ latitude: Number(firstLocatedVenue.latitude), longitude: Number(firstLocatedVenue.longitude), latitudeDelta: 0.18, longitudeDelta: 0.18 });
+    }
+  }, [venues, hasMapMoved]);
+
+  const mapMarkers = useMemo(() => {
+    const cellLat = Math.max(mapRegion.latitudeDelta / 12, 0.004);
+    const cellLng = Math.max(mapRegion.longitudeDelta / 12, 0.004);
+    const groups = new Map<string, Venue[]>();
+    for (const venue of venues) {
+      if (venue.latitude == null || venue.longitude == null) continue;
+      const latitude = Number(venue.latitude);
+      const longitude = Number(venue.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+      const key = `${Math.floor(latitude / cellLat)}:${Math.floor(longitude / cellLng)}`;
+      groups.set(key, [...(groups.get(key) ?? []), venue]);
+    }
+    return [...groups.values()].map((group) => ({
+      venues: group,
+      coordinate: {
+        latitude: group.reduce((sum, venue) => sum + Number(venue.latitude), 0) / group.length,
+        longitude: group.reduce((sum, venue) => sum + Number(venue.longitude), 0) / group.length,
+      },
+    }));
+  }, [venues, mapRegion.latitudeDelta, mapRegion.longitudeDelta]);
 
   const sportNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -113,6 +159,22 @@ export const HomeScreen: React.FC = () => {
     priceField: { flex: 1, borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, color: colors.text.primary, backgroundColor: colors.background.primary },
     favoriteToggle: { alignSelf: 'flex-end', marginTop: -spacing.sm, marginBottom: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.full, backgroundColor: colors.background.primary, borderWidth: 1, borderColor: colors.border.light },
     favoriteToggleText: { ...typography.caption, color: colors.primary[700], fontWeight: '700' },
+    mapActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+    mapAction: { flex: 1, borderWidth: 1, borderColor: colors.border.medium, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.background.primary },
+    mapActionActive: { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+    mapActionText: { ...typography.caption, color: colors.text.primary, fontWeight: '700' },
+    mapOverlayActions: { position: 'absolute', top: spacing.md, left: spacing.md, right: spacing.md, flexDirection: 'row', gap: spacing.sm },
+    mapPill: { backgroundColor: colors.background.primary, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border.light, elevation: 3 },
+    mapPillText: { ...typography.caption, color: colors.text.primary, fontWeight: '700' },
+    mapBottom: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, gap: spacing.sm },
+    mapPreview: { backgroundColor: colors.background.primary, borderRadius: radius.lg, padding: spacing.md, flexDirection: 'row', gap: spacing.md, elevation: 5 },
+    mapPreviewImage: { width: 76, height: 76, borderRadius: radius.md, backgroundColor: colors.background.secondary },
+    mapPreviewInfo: { flex: 1, justifyContent: 'center', gap: spacing.xxs },
+    mapVenueName: { ...typography.subtitle2, color: colors.text.primary },
+    mapMeta: { ...typography.caption, color: colors.text.secondary },
+    mapError: { ...typography.caption, color: colors.error[600], backgroundColor: colors.background.primary, padding: spacing.sm, borderRadius: radius.md },
+    cluster: { minWidth: 38, height: 38, borderRadius: radius.full, paddingHorizontal: spacing.xs, backgroundColor: colors.primary[600], borderWidth: 2, borderColor: colors.background.primary, alignItems: 'center', justifyContent: 'center' },
+    clusterText: { ...typography.caption, color: colors.text.inverse, fontWeight: '800' },
   });
 
   const renderHeader = () => (
@@ -125,6 +187,10 @@ export const HomeScreen: React.FC = () => {
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
           <Pressable accessibilityRole="button" accessibilityState={{ selected: !showFavorites }} style={[s.filterToggle, !showFavorites && s.chipActive]} onPress={() => setShowFavorites(false)}><Text style={s.filterText}>Explore venues</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityState={{ selected: showFavorites }} style={[s.filterToggle, showFavorites && s.chipActive]} onPress={() => setShowFavorites(true)}><Text style={s.filterText}>♥ Saved ({favoriteEntries.length})</Text></Pressable>
+        </View>
+        <View style={s.mapActions}>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: !showMap }} style={[s.mapAction, !showMap && s.mapActionActive]} onPress={() => setShowMap(false)}><Text style={s.mapActionText}>List</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: showMap }} style={[s.mapAction, showMap && s.mapActionActive]} onPress={() => setShowMap(true)}><Text style={s.mapActionText}>Map</Text></Pressable>
         </View>
         <TextInput
           accessibilityLabel="Search venues or city"
@@ -226,6 +292,104 @@ export const HomeScreen: React.FC = () => {
       />
     );
   };
+
+  const centerOnMyLocation = async () => {
+    setLocating(true);
+    setLocationError(null);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setLocationError('Location permission is off. You can still move the map and search an area.');
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude, longitude } = position.coords;
+      const nextRegion = { latitude, longitude, latitudeDelta: 0.12, longitudeDelta: 0.12 };
+      mapRef.current?.animateToRegion(nextRegion, 350);
+      setMapRegion(nextRegion);
+      setHasMapMoved(true);
+      setSearchArea({ latitude, longitude, radiusKm: 8 });
+      setSelectedMapVenue(null);
+    } catch {
+      setLocationError('Could not read your location. Move the map to search nearby venues.');
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const searchThisArea = () => {
+    const radiusKm = Math.min(200, Math.max(1, Math.ceil(Math.max(mapRegion.latitudeDelta, mapRegion.longitudeDelta) * 55.5)));
+    setSearchArea({ latitude: mapRegion.latitude, longitude: mapRegion.longitude, radiusKm });
+    setHasMapMoved(true);
+    setSelectedMapVenue(null);
+  };
+
+  if (showMap) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background.screen }}>
+        <ScrollView style={{ maxHeight: 260 }} keyboardShouldPersistTaps="handled">{renderHeader()}</ScrollView>
+        <View style={{ flex: 1 }}>
+          <MapView
+            ref={mapRef}
+            style={{ flex: 1 }}
+            initialRegion={mapRegion}
+            onRegionChangeComplete={(region) => { setMapRegion(region); setHasMapMoved(true); }}
+            showsUserLocation
+            showsMyLocationButton={false}
+            accessibilityLabel="Sports venues map"
+          >
+            {mapMarkers.map((marker) => marker.venues.length > 1 ? (
+              <Marker
+                key={marker.venues.map((venue) => venue.id).join(':')}
+                coordinate={marker.coordinate}
+                accessibilityLabel={`${marker.venues.length} venues in this area`}
+                onPress={() => {
+                  const nextRegion = { ...mapRegion, ...marker.coordinate, latitudeDelta: Math.max(mapRegion.latitudeDelta / 2, 0.015), longitudeDelta: Math.max(mapRegion.longitudeDelta / 2, 0.015) };
+                  mapRef.current?.animateToRegion(nextRegion, 250);
+                  setMapRegion(nextRegion);
+                }}
+              >
+                <View style={s.cluster}><Text style={s.clusterText}>{marker.venues.length}</Text></View>
+              </Marker>
+            ) : (
+              <Marker
+                key={marker.venues[0]!.id}
+                coordinate={marker.coordinate}
+                title={marker.venues[0]!.name}
+                description={marker.venues[0]!.city}
+                onPress={() => setSelectedMapVenue(marker.venues[0]!)}
+              />
+            ))}
+          </MapView>
+          <View style={s.mapOverlayActions}>
+            <TouchableOpacity accessibilityRole="button" style={s.mapPill} disabled={locating} onPress={() => void centerOnMyLocation()}>
+              <Text style={s.mapPillText}>{locating ? 'Locating…' : '◎ Near me'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" style={[s.mapPill, { marginLeft: 'auto' }]} onPress={searchThisArea}>
+              <Text style={s.mapPillText}>Search this area</Text>
+            </TouchableOpacity>
+          </View>
+          <View pointerEvents="box-none" style={s.mapBottom}>
+            {locationError ? <Text style={s.mapError}>{locationError}</Text> : null}
+            {venues.length > 0 && mapMarkers.length === 0 ? <Text style={s.mapError}>These venues do not have map coordinates yet.</Text> : null}
+            {selectedMapVenue ? (
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Open ${selectedMapVenue.name}`} activeOpacity={0.9} onPress={() => navigation.navigate('VenueDetail', { venueId: selectedMapVenue.id })}>
+                <View style={s.mapPreview}>
+                  <Image source={{ uri: selectedMapVenue.images?.[0] }} style={s.mapPreviewImage} />
+                  <View style={s.mapPreviewInfo}>
+                    <Text numberOfLines={1} style={s.mapVenueName}>{selectedMapVenue.name}</Text>
+                    <Text numberOfLines={1} style={s.mapMeta}>{selectedMapVenue.city} · {selectedMapVenue.priceFrom != null ? `from ₹${selectedMapVenue.priceFrom}` : 'Price on venue page'}</Text>
+                    <Text numberOfLines={1} style={s.mapMeta}>{selectedMapVenue.ratingAverage != null ? `★ ${selectedMapVenue.ratingAverage} verified rating` : 'New venue'} · {selectedMapVenue.nextAvailableSlot ? `Next ${selectedMapVenue.nextAvailableSlot.date} ${selectedMapVenue.nextAvailableSlot.startTime}` : 'No open slots listed'}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ) : null}
+            {venuesQuery.isFetching ? <ActivityIndicator color={colors.primary[600]} /> : null}
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <FlatList

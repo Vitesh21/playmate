@@ -1,5 +1,5 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { eq, ilike, and, gte, lte, gt, lt, count, desc, inArray, or, arrayContains, sql } from "drizzle-orm";
+import { eq, ilike, and, gte, lte, gt, lt, count, desc, asc, inArray, or, arrayContains, sql } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { venues, type NewVenue } from "@/db/schema/venues";
 import { courts } from "@/db/schema/courts";
@@ -111,6 +111,54 @@ export class VenuesService {
     }
     const filteredTotal = orderedVenues.length;
     const items = orderedVenues.slice(offset, offset + perPage);
+    if (items.length) {
+      const venueIds = items.map((venue) => venue.id);
+      const indiaNow = new Date().toLocaleString("en-GB", { timeZone: "Asia/Kolkata", hourCycle: "h23" });
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const localTime = indiaNow.split(", ")[1]?.slice(0, 5) ?? "00:00";
+      const [venueCourts, venueReviews, availableSlots] = await Promise.all([
+        this.db.select({ venueId: courts.venueId, hourlyRate: courts.hourlyRate }).from(courts)
+          .where(and(inArray(courts.venueId, venueIds), eq(courts.isActive, true))),
+        this.db.select({ venueId: reviews.venueId, rating: reviews.rating }).from(reviews)
+          .where(and(inArray(reviews.venueId, venueIds), eq(reviews.isVerified, true))),
+        this.db.select({ venueId: courts.venueId, date: courtSlots.date, startTime: courtSlots.startTime, endTime: courtSlots.endTime, price: courtSlots.price })
+          .from(courtSlots).innerJoin(courts, eq(courts.id, courtSlots.courtId))
+          .where(and(
+            inArray(courts.venueId, venueIds),
+            eq(courts.isActive, true),
+            eq(courtSlots.isAvailable, true),
+            or(gt(courtSlots.date, today), and(eq(courtSlots.date, today), gt(courtSlots.startTime, localTime))),
+          ))
+          .orderBy(asc(courtSlots.date), asc(courtSlots.startTime)).limit(1000),
+      ]);
+      const priceFrom = new Map<string, number>();
+      for (const court of venueCourts) {
+        const rate = Number(court.hourlyRate);
+        priceFrom.set(court.venueId, Math.min(priceFrom.get(court.venueId) ?? Number.POSITIVE_INFINITY, rate));
+      }
+      const ratings = new Map<string, { sum: number; count: number }>();
+      for (const review of venueReviews) {
+        if (!review.venueId) continue;
+        const current = ratings.get(review.venueId) ?? { sum: 0, count: 0 };
+        ratings.set(review.venueId, { sum: current.sum + review.rating, count: current.count + 1 });
+      }
+      const nextSlotByVenue = new Map<string, (typeof availableSlots)[number]>();
+      for (const slot of availableSlots) {
+        const existing = nextSlotByVenue.get(slot.venueId);
+        if (!existing || `${slot.date} ${slot.startTime}` < `${existing.date} ${existing.startTime}`) nextSlotByVenue.set(slot.venueId, slot);
+      }
+      for (let index = 0; index < items.length; index += 1) {
+        const venue = items[index]!;
+        const rating = ratings.get(venue.id);
+        const nextSlot = nextSlotByVenue.get(venue.id);
+        items[index] = {
+          ...venue,
+          priceFrom: priceFrom.get(venue.id) ?? null,
+          ratingAverage: rating ? Math.round((rating.sum / rating.count) * 10) / 10 : null,
+          nextAvailableSlot: nextSlot ? { date: nextSlot.date, startTime: nextSlot.startTime, endTime: nextSlot.endTime, price: nextSlot.price } : null,
+        };
+      }
+    }
     return { items, total: params.latitude !== undefined && params.longitude !== undefined ? filteredTotal : total, page, perPage, totalPages: Math.ceil((params.latitude !== undefined && params.longitude !== undefined ? filteredTotal : total) / perPage) };
   }
 

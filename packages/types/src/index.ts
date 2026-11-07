@@ -146,6 +146,11 @@ export type Venue = {
   /** Free-text amenities: ["Parking", "AC", "Shower", "Changing Room", "Pro Shop"] */
   amenities: string[];
   cancellationPolicy?: { freeCancellationHours: number; lateRefundPercentage: number };
+  /** Discovery preview fields populated by GET /venues. */
+  priceFrom?: number | null;
+  ratingAverage?: number | null;
+  nextAvailableSlot?: { date: string; startTime: string; endTime: string; price: number } | null;
+  distanceKm?: number;
   /** 7 entries, one per weekday (0 = Sunday, 6 = Saturday). */
   operatingHours: OperatingHours[];
   isActive: boolean;
