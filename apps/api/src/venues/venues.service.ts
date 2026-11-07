@@ -1,5 +1,5 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { eq, ilike, and, gte, lte, count, desc, inArray, or, arrayContains, sql } from "drizzle-orm";
+import { eq, ilike, and, gte, lte, gt, lt, count, desc, inArray, or, arrayContains, sql } from "drizzle-orm";
 import { DRIZZLE_DB, type DrizzleDb } from "@/db/database.module";
 import { venues, type NewVenue } from "@/db/schema/venues";
 import { courts } from "@/db/schema/courts";
@@ -64,8 +64,8 @@ export class VenuesService {
         .where(and(
           eq(courtSlots.date, searchDate),
           eq(courtSlots.isAvailable, true),
-          params.availableNow ? lte(courtSlots.startTime, timeNow) : params.startTime ? lte(courtSlots.startTime, params.startTime) : undefined,
-          params.availableNow ? gte(courtSlots.endTime, timeNow) : params.endTime ? gte(courtSlots.endTime, params.endTime) : undefined,
+          params.availableNow ? lte(courtSlots.startTime, timeNow) : params.startTime || params.endTime ? lt(courtSlots.startTime, params.endTime ?? "23:59") : undefined,
+          params.availableNow ? gte(courtSlots.endTime, timeNow) : params.startTime || params.endTime ? gt(courtSlots.endTime, params.startTime ?? "00:00") : undefined,
         ));
       const availableVenueIds = [...new Set(matchingSlots.map((slot) => slot.venueId))];
       if (!availableVenueIds.length) return { items: [], total: 0, page, perPage, totalPages: 0 };

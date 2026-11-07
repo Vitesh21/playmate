@@ -18,6 +18,10 @@ import { useAuthStore } from '@store/auth.store';
 import type { HomeStackParamList } from '@navigation/types';
 import type { Sport, Venue } from '@playmate/types';
 
+function localDateString(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 /**
  * Home / "Play" tab — lists bookable venues from the API with a sport filter.
  */
@@ -34,6 +38,9 @@ export const HomeScreen: React.FC = () => {
   const [amenity, setAmenity] = useState<string | undefined>();
   const [minRating, setMinRating] = useState<number | undefined>();
   const [availableNow, setAvailableNow] = useState(false);
+  const [surface, setSurface] = useState<string | undefined>();
+  const [searchDate, setSearchDate] = useState<string | undefined>();
+  const [timeWindow, setTimeWindow] = useState<'morning' | 'afternoon' | 'evening' | undefined>();
   const [showFilters, setShowFilters] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
 
@@ -44,6 +51,10 @@ export const HomeScreen: React.FC = () => {
     minPrice: minPrice ? Number(minPrice) : undefined,
     maxPrice: maxPrice ? Number(maxPrice) : undefined,
     courtType,
+    surface,
+    date: searchDate ?? (timeWindow ? localDateString(new Date()) : undefined),
+    startTime: timeWindow === 'morning' ? '06:00' : timeWindow === 'afternoon' ? '12:00' : timeWindow === 'evening' ? '17:00' : undefined,
+    endTime: timeWindow === 'morning' ? '12:00' : timeWindow === 'afternoon' ? '17:00' : timeWindow === 'evening' ? '23:00' : undefined,
     amenities: amenity,
     utcOffsetMinutes: -new Date().getTimezoneOffset(),
     minRating,
@@ -128,7 +139,7 @@ export const HomeScreen: React.FC = () => {
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFilters }} style={s.filterToggle} onPress={() => setShowFilters((value) => !value)}>
             <Text style={s.filterText}>{showFilters ? 'Hide filters' : 'Filters'}</Text>
           </Pressable>
-          {(courtType || amenity || minPrice || maxPrice || minRating || availableNow) ? <Pressable accessibilityRole="button" onPress={() => { setCourtType(undefined); setAmenity(undefined); setMinPrice(''); setMaxPrice(''); setMinRating(undefined); setAvailableNow(false); }}><Text style={s.filterText}>Clear filters</Text></Pressable> : null}
+          {(courtType || surface || amenity || minPrice || maxPrice || minRating || availableNow || searchDate || timeWindow) ? <Pressable accessibilityRole="button" onPress={() => { setCourtType(undefined); setSurface(undefined); setAmenity(undefined); setMinPrice(''); setMaxPrice(''); setMinRating(undefined); setAvailableNow(false); setSearchDate(undefined); setTimeWindow(undefined); }}><Text style={s.filterText}>Clear filters</Text></Pressable> : null}
         </View>
         {showFilters ? <View style={s.filterPanel}>
           <Text style={s.filterText}>Hourly price (₹)</Text>
@@ -138,6 +149,19 @@ export const HomeScreen: React.FC = () => {
           </View>
           <Text style={s.filterText}>Court type</Text>
           <View style={s.filterRow}>{(['INDOOR', 'OUTDOOR'] as const).map((type) => <Pressable key={type} accessibilityRole="button" accessibilityState={{ selected: courtType === type }} style={[s.filterChip, courtType === type && s.filterChipActive]} onPress={() => setCourtType(courtType === type ? undefined : type)}><Text style={s.filterText}>{type === 'INDOOR' ? 'Indoor' : 'Outdoor'}</Text></Pressable>)}</View>
+          <Text style={s.filterText}>Surface</Text>
+          <View style={s.filterRow}>{['wood', 'synthetic turf', 'clay', 'concrete'].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: surface === value }} style={[s.filterChip, surface === value && s.filterChipActive]} onPress={() => setSurface(surface === value ? undefined : value)}><Text style={s.filterText}>{value.replace(/\b\w/g, (character) => character.toUpperCase())}</Text></Pressable>)}</View>
+          <Text style={s.filterText}>Day and time</Text>
+          <View style={s.filterRow}>
+            {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+              const day = new Date();
+              day.setDate(day.getDate() + offset);
+              const value = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+              const label = offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : day.toLocaleDateString(undefined, { weekday: 'short' });
+              return <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: searchDate === value }} style={[s.filterChip, searchDate === value && s.filterChipActive]} onPress={() => setSearchDate(searchDate === value ? undefined : value)}><Text style={s.filterText}>{label}</Text></Pressable>;
+            })}
+          </View>
+          <View style={s.filterRow}>{([['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: timeWindow === value }} style={[s.filterChip, timeWindow === value && s.filterChipActive]} onPress={() => setTimeWindow(timeWindow === value ? undefined : value)}><Text style={s.filterText}>{label}</Text></Pressable>)}</View>
           <Text style={s.filterText}>Availability and rating</Text>
           <View style={s.filterRow}>
             <Pressable accessibilityRole="button" accessibilityState={{ selected: availableNow }} style={[s.filterChip, availableNow && s.filterChipActive]} onPress={() => setAvailableNow((value) => !value)}><Text style={s.filterText}>Available now</Text></Pressable>
